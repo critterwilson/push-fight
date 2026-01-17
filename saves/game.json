@@ -1,0 +1,168 @@
+{
+  "board": {
+    "grid": [
+      [
+        -1,
+        -1,
+        -1,
+        -1
+      ],
+      [
+        -1,
+        0,
+        0,
+        -1
+      ],
+      [
+        0,
+        0,
+        0,
+        -1
+      ],
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        -1,
+        0,
+        0,
+        0
+      ],
+      [
+        -1,
+        0,
+        0,
+        -1
+      ],
+      [
+        -1,
+        -1,
+        -1,
+        -1
+      ]
+    ],
+    "pieces": [
+      [
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        {
+          "team": "white",
+          "shape": "round"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "team": "white",
+          "shape": "square"
+        },
+        {
+          "team": "white",
+          "shape": "square"
+        },
+        {
+          "team": "white",
+          "shape": "square"
+        },
+        {
+          "team": "white",
+          "shape": "round"
+        }
+      ],
+      [
+        {
+          "team": "brown",
+          "shape": "square"
+        },
+        {
+          "team": "brown",
+          "shape": "square"
+        },
+        {
+          "team": "brown",
+          "shape": "square"
+        },
+        {
+          "team": "brown",
+          "shape": "round"
+        }
+      ],
+      [
+        null,
+        {
+          "team": "brown",
+          "shape": "round"
+        },
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        null,
+        null,
+        null,
+        null
+      ]
+    ],
+    "anchor_pos": [
+      null,
+      null
+    ]
+  },
+  "current_player": "white",
+  "setup_mode": false,
+  "moves_made": 0,
+  "push_completed": false,
+  "game_over": false,
+  "winner": null
+}
