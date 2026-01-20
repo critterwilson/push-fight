@@ -14,16 +14,17 @@ def register_routes(app):
     
     @app.route('/')
     def index():
-        """Serve the Angular app (in production, serve from dist folder)."""
-        import os
-        from flask import send_from_directory
-        
-        # In production, serve from Angular build
-        frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'frontend', 'dist', 'push-fight-frontend', 'browser')
-        if os.path.exists(frontend_dist):
-            return send_from_directory(frontend_dist, 'index.html')
-        # Fallback to template during development
-        return render_template('index.html')
+        """API root endpoint."""
+        return jsonify({
+            'message': 'Push Fight API',
+            'endpoints': {
+                'game_state': '/api/game/state',
+                'new_game': '/api/game/new',
+                'move': '/api/game/move',
+                'push': '/api/game/push',
+                'health': '/api/health'
+            }
+        })
     
     @app.route('/api/game/state', methods=['GET'])
     def get_game_state():

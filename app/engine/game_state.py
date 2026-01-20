@@ -35,17 +35,51 @@ class GameState:
         self.moves_made = 0
         self.push_completed = False
 
-    def check_for_victory(self, pushed_to_y, pushed_to_x):
-        """Checks if the last push moved a piece into the kill zone (-1)."""
-        if self.board.is_kill_zone(pushed_to_y, pushed_to_x):
-            self.game_over = True
-            self.winner = self.current_player
-            return True
+    def count_square_pieces(self, team):
+        """
+        Count the number of square pieces remaining on the board for a team.
+        
+        Args:
+            team: 'white' or 'brown'
+            
+        Returns:
+            int: Number of square pieces on the board
+        """
+        count = 0
+        for y in range(10):
+            for x in range(4):
+                piece = self.board.get_piece(y, x)
+                if (piece and piece != "OUT_OF_BOUNDS" and 
+                    piece.team == team and piece.shape == 'square'):
+                    count += 1
+        return count
+    
+    def check_for_victory(self, piece, pushed_to_y, pushed_to_x):
+        """
+        Checks if the last push moved a piece into the kill zone and determines winner.
+        
+        NOTE: This method is kept for backward compatibility, but pushes into kill zones
+        are now blocked in perform_push(). Victory is now determined by check_game_over()
+        which counts remaining pieces.
+        
+        Args:
+            piece: The Piece object that was pushed into the kill zone
+            pushed_to_y: Y coordinate where piece landed
+            pushed_to_x: X coordinate where piece landed
+            
+        Returns:
+            bool: True if game is over, False otherwise
+        """
+        # Pushes into kill zones are now blocked, so this should not be called
+        # But kept for safety/backward compatibility
         return False
 
     def perform_push(self, y, x, direction):
         """
         direction: (dy, dx) e.g., (1, 0) for down
+        
+        New rule: Pushes can be attempted against anchored pieces (they just won't move anything).
+        Side rails still block pushes.
         """
         piece = self.board.get_piece(y, x)
         
@@ -60,35 +94,79 @@ class GameState:
         dy, dx = direction
         chain, landing_spot = self.board.get_push_chain(y, x, dy, dx)
         
-        # 2. Validation: The anchor cannot be moved [cite: 37, 39]
-        if self.board.anchor_pos[0] is not None:  # Check if anchor exists
-            for pos in chain:
-                if pos == self.board.anchor_pos:
-                    print("Push blocked by Anchor!")
-                    return False
-
-        # 3. Validation: Side Rail Check
+        # 2. Validation: Side Rail Check
         # If landing_spot is OUT_OF_BOUNDS (off the 10x4 array), it's a side rail 
         if not self.board.is_on_board(*landing_spot):
             print("Push blocked by side rail!")
             return False
 
-        # 4. Execution: Shift pieces in reverse order to avoid overwriting
-        for pos in reversed(chain):
+        # 3. Validation: Kill Zone Check
+        # Don't allow pushes that would move pieces into kill zones
+        if self.board.is_kill_zone(*landing_spot):
+            print("Push blocked - cannot push into kill zone!")
+            return False
+
+        # 4. Check if anchor is in the chain (but allow the push anyway)
+        anchor_in_chain = False
+        if self.board.anchor_pos[0] is not None:
+            for pos in chain:
+                if pos == self.board.anchor_pos:
+                    anchor_in_chain = True
+                    break
+
+        # 5. Execution: Shift pieces in reverse order to avoid overwriting
+        # If anchor is in chain, pieces before anchor can move, but anchor and pieces after it cannot
+        pieces_moved = False
+        
+        # Find anchor position in chain to determine what can move
+        anchor_index = -1
+        if anchor_in_chain:
+            for i, pos in enumerate(chain):
+                if pos == self.board.anchor_pos:
+                    anchor_index = i
+                    break
+        
+        # Move pieces in reverse order (from end of chain to start)
+        for i in range(len(chain) - 1, -1, -1):
+            pos = chain[i]
             curr_y, curr_x = pos
+            
+            # If anchor is in chain, don't move anchor or any pieces after it (earlier in chain)
+            if anchor_in_chain and i <= anchor_index:
+                # This is the anchor or a piece after it - don't move
+                continue
+            
             new_y, new_x = curr_y + dy, curr_x + dx
             
-            moving_piece = self.board.pieces[curr_y][curr_x]
-            self.board.pieces[curr_y][curr_x] = None # Clear old spot
-            
-            # 5. Victory Check: Did a piece land on a -1? [cite: 8, 20, 43]
+            # Additional safety check: don't move into kill zone (shouldn't happen due to validation above)
             if self.board.is_kill_zone(new_y, new_x):
-                self.handle_win(self.current_player)
-            else:
-                self.board.pieces[new_y][new_x] = moving_piece
+                # This shouldn't happen due to validation, but safety check
+                continue
+            
+            # Safety check: don't move if destination would be the anchor position
+            if self.board.anchor_pos[0] is not None and (new_y, new_x) == self.board.anchor_pos:
+                # Can't move into anchor position - this piece is blocked by anchor
+                # Don't clear the piece's current position - it stays where it is
+                continue
+            
+            moving_piece = self.board.pieces[curr_y][curr_x]
+            if moving_piece is None:
+                # Piece already moved or doesn't exist - skip
+                continue
+            
+            # Check if destination is already occupied (shouldn't happen in normal flow, but safety check)
+            if self.board.pieces[new_y][new_x] is not None:
+                # Destination occupied - can't move here, don't clear current position
+                continue
+            
+            # All checks passed - move the piece
+            self.board.pieces[curr_y][curr_x] = None  # Clear old spot
+            self.board.pieces[new_y][new_x] = moving_piece
+            pieces_moved = True
 
         # 6. Update Anchor: Share one anchor on the square piece that pushed [cite: 36, 41]
         # The square piece moves to (y + dy, x + dx), so anchor goes there
+        # Note: Even if nothing moved (anchor blocked), we still update the anchor position
         self.board.anchor_pos = (y + dy, x + dx)
         self.push_completed = True
         return True
@@ -97,6 +175,34 @@ class GameState:
         """Sets the game over state and winner."""
         self.game_over = True
         self.winner = winner
+    
+    def check_game_over(self):
+        """
+        Check if the game should be over based on current board state.
+        This checks if any player has 1 or fewer Square pieces remaining
+        (meaning 2 squares were pushed off, since players start with 3 squares).
+        
+        Returns:
+            bool: True if game is over, False otherwise
+        """
+        if self.game_over:
+            return True
+        
+        # Check if either player has 1 or fewer Square pieces (2+ pushed off)
+        white_squares = self.count_square_pieces('white')
+        brown_squares = self.count_square_pieces('brown')
+        
+        if white_squares <= 1:
+            self.game_over = True
+            self.winner = 'brown'
+            return True
+        
+        if brown_squares <= 1:
+            self.game_over = True
+            self.winner = 'white'
+            return True
+        
+        return False
 
     def has_legal_push(self):
         """Checks if the current player has any legal push available [cite: 51]."""
@@ -113,18 +219,10 @@ class GameState:
                         # Try a test push to see if it's legal
                         chain, landing_spot = self.board.get_push_chain(y, x, dy, dx)
                         
-                        # Check if anchor blocks this push
-                        anchor_blocks = False
-                        if self.board.anchor_pos[0] is not None:  # Check if anchor exists
-                            for pos in chain:
-                                if pos == self.board.anchor_pos:
-                                    anchor_blocks = True
-                                    break
-                        
-                        # Check if side rail blocks
+                        # Check if side rail blocks (anchor no longer blocks)
                         side_rail_blocks = not self.board.is_on_board(*landing_spot)
                         
-                        if not anchor_blocks and not side_rail_blocks:
+                        if not side_rail_blocks:
                             return True
         
         return False

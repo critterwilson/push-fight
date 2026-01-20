@@ -77,31 +77,26 @@ Before the game begins, players place their pieces on the board:
 ---
 ## Development
 
-### Quick Start with Tmuxinator
+### Quick Start
 
-If you have tmuxinator installed, start both backend and frontend with one command:
+The game can be run in three modes:
 
-```bash
-tmuxinator start push-fight-app
-```
+1. **PyGame UI** (recommended for playing):
+   ```bash
+   uv run python -m app.main --pygame
+   # or simply:
+   uv run python -m app.main
+   ```
 
-### Manual Setup
+2. **CLI** (for quick testing):
+   ```bash
+   uv run python -m app.cli
+   ```
 
-To run the game in development mode:
-
-1. Start the Flask API server:
+3. **Web API** (for API access):
    ```bash
    uv run python -m app.main --web
    ```
-
-2. In a separate terminal, start the Angular frontend:
-   ```bash
-   cd frontend
-   npm install  # First time only
-   npm start
-   ```
-
-The Angular dev server will proxy API requests to Flask automatically.
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for more detailed development instructions.
 
