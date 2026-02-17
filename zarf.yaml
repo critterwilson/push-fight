@@ -1,7 +1,7 @@
 kind: ZarfPackageConfig
 metadata:
   name: push-fight-app
-  description: "Push Fight board game with RL training, deployed via UDS"
+  description: "Push Fight board game with RL training and RAG referee, deployed via UDS"
   version: "0.0.1"
 
 components:
@@ -14,9 +14,27 @@ components:
           - network-policies.yaml
     images:
       - "push-fight-app:latest"
+      - "chromadb/chroma:latest"
+      - "ollama/ollama:latest"
     actions:
       onDeploy:
         after:
+          - wait:
+              cluster:
+                kind: deployment
+                name: chromadb
+                namespace: push-fight
+                condition: available
+          - wait:
+              cluster:
+                kind: deployment
+                name: ollama
+                namespace: push-fight
+                condition: available
+          - cmd: "kubectl exec -n push-fight deploy/ollama -- ollama pull llama3"
+            description: "Pull Llama3 model for RAG referee"
+          - cmd: "kubectl exec -n push-fight deploy/ollama -- ollama pull nomic-embed-text"
+            description: "Pull embedding model for RAG referee"
           - wait:
               cluster:
                 kind: deployment

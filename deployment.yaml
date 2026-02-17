@@ -5,6 +5,105 @@ metadata:
   labels:
     istio-injection: enabled
 ---
+# --- ChromaDB (vector store for RAG) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chromadb
+  namespace: push-fight
+  labels:
+    app: chromadb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chromadb
+  template:
+    metadata:
+      labels:
+        app: chromadb
+    spec:
+      containers:
+      - name: chromadb
+        image: chromadb/chroma:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        volumeMounts:
+        - name: chroma-data
+          mountPath: /chroma/chroma
+      volumes:
+      - name: chroma-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chromadb
+  namespace: push-fight
+spec:
+  selector:
+    app: chromadb
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+# --- Ollama (LLM inference for RAG) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: push-fight
+  labels:
+    app: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        volumeMounts:
+        - name: ollama-data
+          mountPath: /root/.ollama
+      volumes:
+      - name: ollama-data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: push-fight
+spec:
+  selector:
+    app: ollama
+  ports:
+  - port: 11434
+    targetPort: 11434
+---
+# --- Push Fight App ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,6 +124,13 @@ spec:
       containers:
       - name: app
         image: push-fight-app:latest
+        env:
+        - name: OLLAMA_HOST
+          value: "http://ollama:11434"
+        - name: CHROMA_HOST
+          value: "chromadb"
+        - name: CHROMA_PORT
+          value: "8000"
         resources:
           requests:
             cpu: "500m"

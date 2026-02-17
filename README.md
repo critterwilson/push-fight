@@ -26,12 +26,15 @@ app/
     board_renderer.py
     input_handler.py
     ui_components.py
+  rag/             # RAG implementation (LLM + Vector DB)
   rl/              # Reinforcement learning
     env.py         # Gymnasium environment (PushFightEnv)
     agent.py       # Shared AI Agent class for inference
     train.py       # Training script (MaskablePPO)
     play_against_ai.py  # CLI to play against trained model
   cli.py           # CLI utilities (board printing, input parsing)
+demo_rag.py        # RAG demo script
+demo_ui_integration.py # UI + RAG integration demo
 tests/
   test_engine.py   # 71 engine tests
   test_rl_env.py   # 25 RL environment tests
@@ -97,7 +100,7 @@ uv run python -m app.rl.train --watch --model models/push_fight_ppo --episodes 5
 # Install dependencies
 uv sync --dev
 
-# Run all tests (96 total)
+# Run all tests (122 total)
 uv run pytest
 
 # Run engine tests only

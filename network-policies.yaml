@@ -9,7 +9,49 @@ spec:
   - Ingress
   - Egress
 ---
-# Allow App Egress (DNS only - no external services needed for RL training)
+# Allow App to access Ollama
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-ollama
+  namespace: push-fight
+spec:
+  podSelector:
+    matchLabels:
+      app: ollama
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: push-fight-app
+    ports:
+    - protocol: TCP
+      port: 11434
+---
+# Allow App to access ChromaDB
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-chromadb
+  namespace: push-fight
+spec:
+  podSelector:
+    matchLabels:
+      app: chromadb
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: push-fight-app
+    ports:
+    - protocol: TCP
+      port: 8000
+---
+# Allow App Egress (DNS + Ollama + ChromaDB)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -31,3 +73,19 @@ spec:
     ports:
     - protocol: UDP
       port: 53
+  # Allow traffic to Ollama
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ollama
+    ports:
+    - protocol: TCP
+      port: 11434
+  # Allow traffic to ChromaDB
+  - to:
+    - podSelector:
+        matchLabels:
+          app: chromadb
+    ports:
+    - protocol: TCP
+      port: 8000

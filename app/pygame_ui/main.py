@@ -7,6 +7,8 @@ from app.pygame_ui.game_view import GameView
 from app.pygame_ui.board_renderer import BoardRenderer
 from app.pygame_ui.input_handler import InputHandler
 from app.pygame_ui.ui_components import Button, StatusPanel
+from app.pygame_ui.chat_overlay import ChatOverlay
+from app.rag.ai_interface import AIInterface
 
 
 # Constants
@@ -61,6 +63,11 @@ def main():
     right_btn = Button(direction_btn_x + direction_btn_size * 2, direction_btn_y + direction_btn_size + 5, 
                        direction_btn_size, direction_btn_size, "→", (80, 80, 80), font_size=30)
     
+    # RAG Referee
+    ai_interface = AIInterface()
+    chat_overlay = ChatOverlay(WINDOW_WIDTH, WINDOW_HEIGHT)
+    ask_referee_btn = Button(500, 580, 150, 40, "Ask Referee", (100, 80, 140))
+
     running = True
     show_dialog = False
     dialog_mode = None  # 'save', 'load', or 'ai_model'
@@ -76,6 +83,11 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
+            # Chat overlay consumes all events when visible
+            elif chat_overlay.visible:
+                chat_overlay.handle_event(event)
+                continue
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     # Handle dialog interactions first
@@ -141,6 +153,9 @@ def main():
                         show_dialog = True
                         dialog_mode = 'load'
                         dialog_filename = ""
+                    # Check Ask Referee button
+                    elif not show_dialog and ask_referee_btn.handle_event(event):
+                        chat_overlay.show()
                     # Check skip moves button
                     elif not show_dialog and skip_moves_btn.handle_event(event):
                         if game_view.game.can_move():
@@ -227,6 +242,7 @@ def main():
                 save_btn.handle_event(event)
                 load_btn.handle_event(event)
                 skip_moves_btn.handle_event(event)
+                ask_referee_btn.handle_event(event)
             
             # Update direction buttons hover states
             if not show_dialog and input_handler.get_selected_pos() and not game_view.game.can_move():
@@ -240,6 +256,19 @@ def main():
         
         # Update game state
         game_view.update()
+
+        # Update chat overlay (drain answer queue, animations)
+        chat_overlay.referee_ready = ai_interface.is_ready
+        chat_overlay.referee_error = ai_interface.loading_error
+        chat_overlay.update()
+
+        # Submit pending question to RAG
+        if chat_overlay.pending_question:
+            question = chat_overlay.pending_question
+            chat_overlay.pending_question = None
+            ai_interface.ask_question(
+                game_view.game, question, chat_overlay.receive_answer
+            )
         
         # Handle AI turn (non-blocking)
         current_time = pygame.time.get_ticks()
@@ -283,6 +312,7 @@ def main():
         
         save_btn.draw(screen)
         load_btn.draw(screen)
+        ask_referee_btn.draw(screen)
         
         # Draw skip moves button (only during move phase)
         if game_view.game.can_move() and not game_view.game.game_over:
@@ -357,6 +387,9 @@ def main():
                 hint_text = small_font.render("Press Enter to confirm, Esc to cancel", True, (150, 150, 150))
                 screen.blit(hint_text, (dialog_rect.x + 20, dialog_rect.y + 100))
         
+        # Draw chat overlay (on top of everything)
+        chat_overlay.draw(screen)
+
         pygame.display.flip()
         clock.tick(FPS)
     
