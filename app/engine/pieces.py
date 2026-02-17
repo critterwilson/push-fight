@@ -1,6 +1,6 @@
 class Piece:
     def __init__(self, team, shape):
-        self.team = team      # 'white' or 'brown' [cite: 7]
+        self.team = team      # 'white' or 'black' [cite: 7]
         self.shape = shape    # 'square' or 'round' 
         self.is_square = (shape == 'square')
 

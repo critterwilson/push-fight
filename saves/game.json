@@ -110,26 +110,26 @@
       ],
       [
         {
-          "team": "brown",
+          "team": "black",
           "shape": "square"
         },
         {
-          "team": "brown",
+          "team": "black",
           "shape": "square"
         },
         {
-          "team": "brown",
+          "team": "black",
           "shape": "square"
         },
         {
-          "team": "brown",
+          "team": "black",
           "shape": "round"
         }
       ],
       [
         null,
         {
-          "team": "brown",
+          "team": "black",
           "shape": "round"
         },
         null,
@@ -164,5 +164,15 @@
   "moves_made": 0,
   "push_completed": false,
   "game_over": false,
-  "winner": null
+  "winner": null,
+  "pieces_pushed_off": {
+    "white": {
+      "squares": 0,
+      "rounds": 0
+    },
+    "black": {
+      "squares": 0,
+      "rounds": 0
+    }
+  }
 }

@@ -391,7 +391,7 @@ def play_game():
         if not game.has_legal_push():
             print(colorize(f"{game.current_player.upper()} has no legal pushes! Game Over.", Colors.RED))
             game.game_over = True
-            game.winner = 'brown' if game.current_player == 'white' else 'white'
+            game.winner = 'black' if game.current_player == 'white' else 'white'
             break
         
         # Move Phase: Up to 2 moves (optional - can skip)

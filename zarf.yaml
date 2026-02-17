@@ -1,0 +1,25 @@
+kind: ZarfPackageConfig
+metadata:
+  name: push-fight-app
+  description: "Push Fight board game with RL training, deployed via UDS"
+  version: "0.0.1"
+
+components:
+  - name: push-fight-app
+    required: true
+    manifests:
+      - name: k8s-resources
+        files:
+          - deployment.yaml
+          - network-policies.yaml
+    images:
+      - "push-fight-app:latest"
+    actions:
+      onDeploy:
+        after:
+          - wait:
+              cluster:
+                kind: deployment
+                name: push-fight-app
+                namespace: push-fight
+                condition: available

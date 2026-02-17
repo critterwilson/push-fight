@@ -6,11 +6,17 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "numpy>=2.4.1",
-    "flask>=3.0.0",
-    "flask-cors>=4.0.0",
     "pygame>=2.5.0",
     "gymnasium>=0.29.0",
-    "pyxel>=2.6.0",
+    "torch>=2.0.0",
+    "stable-baselines3>=2.7.1",
+    "tqdm>=4.67.1",
+    "rich>=14.2.0",
+    "sb3-contrib>=2.7.1",
+    "langchain>=1.2.10",
+    "langchain-community>=0.4.1",
+    "langchain-ollama>=1.0.1",
+    "chromadb>=1.5.0",
 ]
 
 [project.optional-dependencies]

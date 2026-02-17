@@ -20,6 +20,16 @@ class BoardRenderer:
         self.board_y = board_y
         self.cell_size = cell_size
         self.font = pygame.font.Font(None, 20)
+        
+        # Colors
+        self.colors = {
+            'board_bg': (33, 37, 43),
+            'cell_light': (60, 64, 72),
+            'cell_dark': (45, 49, 56),
+            'kill_zone': (120, 50, 50),
+            'highlight': (80, 100, 140),
+            'valid_move': (60, 120, 80)
+        }
     
     def board_to_screen(self, row, col):
         """Convert board coordinates to screen coordinates."""
@@ -50,6 +60,12 @@ class BoardRenderer:
         valid_moves = valid_moves or set()
         highlight_positions = highlight_positions or set()
         
+        # Draw board background border
+        border_rect = pygame.Rect(self.board_x - 5, self.board_y - 5, 
+                                  (4 * self.cell_size) + 10, (10 * self.cell_size) + 10)
+        pygame.draw.rect(surface, self.colors['board_bg'], border_rect)
+        pygame.draw.rect(surface, (80, 80, 90), border_rect, 2)
+        
         # Draw cells
         for row in range(10):
             for col in range(4):
@@ -59,10 +75,10 @@ class BoardRenderer:
                 # Determine cell color
                 if game_state.board.grid[row][col] == -1:
                     # Kill zone
-                    cell_color = (150, 0, 0)
+                    cell_color = self.colors['kill_zone']
                 else:
                     # Playable space
-                    cell_color = (50, 50, 50) if (row + col) % 2 == 0 else (60, 60, 60)
+                    cell_color = self.colors['cell_light'] if (row + col) % 2 == 0 else self.colors['cell_dark']
                 
                 # Highlight valid moves
                 if (row, col) in valid_moves:
@@ -74,7 +90,7 @@ class BoardRenderer:
                     cell_color = tuple(min(255, c + 80) for c in cell_color)
                 
                 pygame.draw.rect(surface, cell_color, rect)
-                pygame.draw.rect(surface, (100, 100, 100), rect, 1)
+                pygame.draw.rect(surface, (35, 39, 46), rect, 1)
         
         # Draw pieces
         for row in range(10):
@@ -87,11 +103,11 @@ class BoardRenderer:
                     
                     # Determine piece color
                     if piece.team == 'white':
-                        piece_color = (255, 255, 255)
-                        outline_color = (200, 200, 200)
+                        piece_color = (220, 220, 225)
+                        outline_color = (180, 180, 190)
                     else:
-                        piece_color = (139, 69, 19)  # Brown
-                        outline_color = (100, 50, 0)
+                        piece_color = (40, 44, 52)
+                        outline_color = (20, 20, 25)
                     
                     # Check if anchored
                     is_anchor = (row, col) == game_state.board.anchor_pos
@@ -99,7 +115,7 @@ class BoardRenderer:
                         outline_color = (255, 0, 0)  # Red for anchor
                     
                     # Draw piece shape
-                    radius = self.cell_size // 3
+                    radius = int(self.cell_size * 0.35)
                     if piece.shape == 'square':
                         # Draw square
                         square_rect = pygame.Rect(
@@ -107,11 +123,16 @@ class BoardRenderer:
                             radius * 2, radius * 2
                         )
                         pygame.draw.rect(surface, piece_color, square_rect)
-                        pygame.draw.rect(surface, outline_color, square_rect, 3)
+                        pygame.draw.rect(surface, outline_color, square_rect, 2)
+                        # Inner detail
+                        inner_rect = square_rect.inflate(-10, -10)
+                        pygame.draw.rect(surface, outline_color, inner_rect, 1)
                     else:
                         # Draw circle
                         pygame.draw.circle(surface, piece_color, (center_x, center_y), radius)
-                        pygame.draw.circle(surface, outline_color, (center_x, center_y), radius, 3)
+                        pygame.draw.circle(surface, outline_color, (center_x, center_y), radius, 2)
+                        # Inner detail
+                        pygame.draw.circle(surface, outline_color, (center_x, center_y), radius - 5, 1)
                     
                     # Draw anchor indicator
                     if is_anchor:

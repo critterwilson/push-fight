@@ -1,7 +1,9 @@
 """Game view and state management for PyGame interface."""
 
+import os
 from app.engine.game_state import GameState
 from app.storage import save_game, load_game, list_saves
+from app.rl.agent import PushFightAgent
 
 
 class GameView:
@@ -12,6 +14,9 @@ class GameView:
         self.game = GameState.create_initial_game()
         self.message = ""
         self.message_timer = 0
+        self.game_mode = 'pvp'  # 'pvp' or 'pvcpu'
+        self.ai_agent = None
+        self.ai_team = 'black'  # AI plays as black (second player) by default
     
     def new_game(self, custom_placement=False):
         """Start a new game."""
@@ -21,35 +26,79 @@ class GameView:
             self.game = GameState.create_initial_game()
         self.set_message("New game started!")
     
+    def set_game_mode(self, mode, ai_model_path=None):
+        """
+        Set game mode and load AI if needed.
+        
+        Args:
+            mode: 'pvp' or 'pvcpu'
+            ai_model_path: Path to AI model (required for pvcpu mode)
+        """
+        self.game_mode = mode
+        
+        if mode == 'pvcpu':
+            if ai_model_path:
+                try:
+                    # Use the shared agent class
+                    self.ai_agent = PushFightAgent(ai_model_path)
+                    self.set_message(f"AI loaded from {ai_model_path}")
+                except Exception as e:
+                    self.set_message(f"Error loading AI: {e}")
+                    self.game_mode = 'pvp'  # Fallback to PvP
+            else:
+                self.set_message("AI model path required for PvCPU mode")
+                self.game_mode = 'pvp'
+        else:
+            self.ai_agent = None
+            self.set_message("PvP mode enabled")
+    
+    def is_ai_turn(self):
+        """Check if it's the AI's turn."""
+        return (self.game_mode == 'pvcpu' and 
+                self.ai_agent is not None and 
+                self.game.current_player == self.ai_team and
+                not self.game.game_over)
+    
+    def get_ai_action(self):
+        """Get action from AI."""
+        if not self.is_ai_turn():
+            return None
+        return self.ai_agent.get_action(self.game)
+    
+    def execute_ai_turn(self):
+        """Execute one step of AI's turn (one move or one push)."""
+        if not self.is_ai_turn():
+            return False
+        
+        action = self.get_ai_action()
+        if not action:
+            return False
+
+        if action['type'] == 'move':
+            from_pos = action['from']
+            to_pos = action['to']
+            success, _ = self.game.perform_move(from_pos, to_pos)
+            if success:
+                self.set_message(f"AI moved ({from_pos[0]},{from_pos[1]}) -> ({to_pos[0]},{to_pos[1]})")
+                return True
+
+        elif action['type'] == 'push':
+            y, x = action['piece']
+            direction = action['direction']
+            dir_names = {(-1, 0): 'up', (1, 0): 'down', (0, -1): 'left', (0, 1): 'right'}
+            dir_name = dir_names.get(direction, 'unknown')
+            
+            if self.push_piece((y, x), direction):
+                self.set_message(f"AI pushed ({y},{x}) {dir_name}")
+                return True
+        
+        return False
+    
     def move_piece(self, from_pos, to_pos):
         """Move a piece."""
-        from_y, from_x = from_pos
-        to_y, to_x = to_pos
-        
-        if self.game.setup_mode or self.game.game_over:
-            self.set_message("Cannot move in current state")
-            return False
-        
-        if not self.game.can_move():
-            self.set_message("Cannot move - must push now")
-            return False
-        
-        piece = self.game.board.get_piece(from_y, from_x)
-        if not piece or piece.team != self.game.current_player:
-            self.set_message("Invalid piece selection")
-            return False
-        
-        valid_moves = self.game.board.get_valid_moves(from_y, from_x)
-        if (to_y, to_x) not in valid_moves:
-            self.set_message("Invalid move destination")
-            return False
-        
-        # Perform move
-        self.game.board.pieces[from_y][from_x] = None
-        self.game.board.pieces[to_y][to_x] = piece
-        self.game.moves_made += 1
-        self.set_message("Piece moved")
-        return True
+        success, message = self.game.perform_move(from_pos, to_pos)
+        self.set_message(message)
+        return success
     
     def push_piece(self, piece_pos, direction):
         """Push with a piece."""
@@ -150,7 +199,7 @@ class GameView:
             # Check for trapped player (no legal pushes)
             if not self.game.game_over and not self.game.has_legal_push():
                 self.game.game_over = True
-                self.game.winner = 'brown' if self.game.current_player == 'white' else 'white'
+                self.game.winner = 'black' if self.game.current_player == 'white' else 'white'
                 self.set_message(f"{self.game.winner.upper()} wins! (opponent trapped)")
     
     def get_message(self):
