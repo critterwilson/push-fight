@@ -1,0 +1,56 @@
+kind: UDSBundle
+metadata:
+  name: push-fight-bundle
+  description: Bundle with k3d, Zarf init, UDS Core, and Push Fight app.
+  version: 0.0.1
+
+packages:
+  - name: uds-k3d
+    repository: ghcr.io/defenseunicorns/packages/uds-k3d
+    ref: 0.19.4
+    overrides:
+      uds-dev-stack:
+        minio:
+          variables:
+            - name: buckets
+              description: "Set Minio Buckets"
+              path: buckets
+            - name: svcaccts
+              description: "Minio Service Accounts"
+              path: svcaccts
+            - name: users
+              description: "Minio Users"
+              path: users
+            - name: policies
+              description: "Minio policies"
+              path: policies
+
+  - name: init
+    repository: oci://ghcr.io/zarf-dev/packages/init
+    ref: v0.71.1
+
+  - name: core
+    repository: oci://ghcr.io/defenseunicorns/packages/uds/core
+    ref: 0.61.0-upstream
+    overrides:
+      pepr-uds-core:
+        module:
+          values:
+            - path: additionalIgnoredNamespaces
+              value:
+                - uds-dev-stack
+      keycloak:
+        keycloak:
+          variables:
+            - name: KEYCLOAK_HEAP_OPTIONS
+              description: "Sets the JAVA_OPTS_KC_HEAP environment variable in Keycloak"
+              path: env[0].value
+          values:
+            - path: env[0]
+              value:
+                name: JAVA_OPTS_KC_HEAP
+                value: "-XX:MaxRAMPercentage=70 -XX:MinRAMPercentage=70 -XX:InitialRAMPercentage=50 -XX:MaxRAM=1G"
+
+  - name: push-fight-app
+    path: ./
+    ref: 0.0.1

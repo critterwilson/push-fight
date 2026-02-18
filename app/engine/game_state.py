@@ -1,21 +1,30 @@
+from datetime import datetime
 from .board import PushFightBoard
 from .pieces import Piece
 
 class GameState:
     def __init__(self, board=None, setup_mode=False):
         self.board = board if board else PushFightBoard()
-        self.current_player = 'white'  # White team goes first [cite: 24]
+        self.current_player = 'white'  # White team goes first 
         
         # Setup phase tracking
         self.setup_mode = setup_mode   # True during piece placement phase
         
         # Turn state tracking
-        self.moves_made = 0            # Can be 0, 1, or 2 [cite: 24, 29]
-        self.push_completed = False    # Turn ends after a mandatory push [cite: 25, 51]
+        self.moves_made = 0            # Can be 0, 1, or 2 
+        self.push_completed = False    # Turn ends after a mandatory push 
         
         # Win state
         self.game_over = False
         self.winner = None
+        
+        # Track pieces pushed off the board (for win condition)
+        # Win condition: 2 squares OR 1 round piece pushed off
+        self.pieces_pushed_off = {
+            'white': {'squares': 0, 'rounds': 0},
+            'black': {'squares': 0, 'rounds': 0}
+        }
+        self.move_log = []
 
     def can_move(self):
         """Checks if the player still has moves left this turn."""
@@ -23,33 +32,114 @@ class GameState:
 
     def can_push(self):
         """Checks if the player is in the push phase."""
-        # A player can push even if they made 0 or 1 move [cite: 29]
+        # A player can push even if they made 0 or 1 move 
         return not self.push_completed
 
     def switch_turn(self):
         """Resets counters and swaps players after a successful push."""
         if not self.push_completed:
-            raise ValueError("You must push to complete your turn!")  # [cite: 31, 51]
+            raise ValueError("You must push to complete your turn!")  # 
             
-        self.current_player = 'brown' if self.current_player == 'white' else 'white'
+        self.current_player = 'black' if self.current_player == 'white' else 'white'
         self.moves_made = 0
         self.push_completed = False
 
-    def check_for_victory(self, pushed_to_y, pushed_to_x):
-        """Checks if the last push moved a piece into the kill zone (-1)."""
-        if self.board.is_kill_zone(pushed_to_y, pushed_to_x):
-            self.game_over = True
-            self.winner = self.current_player
-            return True
-        return False
+    def count_pieces(self, team, shape=None):
+        """
+        Count pieces on the board for a team, optionally filtered by shape.
+        
+        Args:
+            team: 'white' or 'black'
+            shape: 'square', 'round', or None (count all pieces)
+            
+        Returns:
+            int: Number of pieces matching criteria
+        """
+        count = 0
+        for y in range(10):
+            for x in range(4):
+                piece = self.board.get_piece(y, x)
+                if (piece and piece != "OUT_OF_BOUNDS" and piece.team == team):
+                    if shape is None or piece.shape == shape:
+                        count += 1
+        return count
+    
+    def count_square_pieces(self, team):
+        """
+        Count the number of square pieces remaining on the board for a team.
+        
+        Args:
+            team: 'white' or 'black'
+            
+        Returns:
+            int: Number of square pieces on the board
+        """
+        return self.count_pieces(team, 'square')
+    
+    def count_round_pieces(self, team):
+        """
+        Count the number of round pieces remaining on the board for a team.
+        
+        Args:
+            team: 'white' or 'black'
+            
+        Returns:
+            int: Number of round pieces on the board
+        """
+        return self.count_pieces(team, 'round')
+    
+    def perform_move(self, from_pos, to_pos):
+        """
+        Execute a move action with validation and logging.
+        Returns: (success, message)
+        """
+        from_y, from_x = from_pos
+        to_y, to_x = to_pos
+        
+        if self.setup_mode or self.game_over:
+            return False, "Cannot move in current state"
+            
+        if not self.can_move():
+            return False, "Cannot move - must push now"
+            
+        piece = self.board.get_piece(from_y, from_x)
+        if not piece or piece.team != self.current_player:
+            return False, "Invalid piece selection"
+            
+        valid_moves = self.board.get_valid_moves(from_y, from_x)
+        if (to_y, to_x) not in valid_moves:
+            return False, "Invalid move destination"
+            
+        # Execute
+        self.board.pieces[from_y][from_x] = None
+        self.board.pieces[to_y][to_x] = piece
+        self.moves_made += 1
+        
+        # Log
+        self.log_action('move', from_pos=from_pos, to_pos=to_pos)
+        
+        return True, "Piece moved"
+
+    def log_action(self, action_type, **kwargs):
+        """Log an action to the history."""
+        entry = {
+            'type': action_type,
+            'player': self.current_player,
+            'timestamp': datetime.now().isoformat(),
+            **kwargs
+        }
+        self.move_log.append(entry)
 
     def perform_push(self, y, x, direction):
         """
         direction: (dy, dx) e.g., (1, 0) for down
+        
+        New rule: Pushes can be attempted against anchored pieces (they just won't move anything).
+        Side rails still block pushes.
         """
         piece = self.board.get_piece(y, x)
         
-        # 1. Validation: Must be a square piece to push [cite: 12, 30, 34]
+        # 1. Validation: Must be a square piece to push 
         if not piece or piece.shape != 'square':
             return False
         
@@ -60,46 +150,149 @@ class GameState:
         dy, dx = direction
         chain, landing_spot = self.board.get_push_chain(y, x, dy, dx)
         
-        # 2. Validation: The anchor cannot be moved [cite: 37, 39]
-        if self.board.anchor_pos[0] is not None:  # Check if anchor exists
-            for pos in chain:
-                if pos == self.board.anchor_pos:
-                    print("Push blocked by Anchor!")
-                    return False
-
-        # 3. Validation: Side Rail Check
+        # 2. Validation: Side Rail Check
         # If landing_spot is OUT_OF_BOUNDS (off the 10x4 array), it's a side rail 
         if not self.board.is_on_board(*landing_spot):
-            print("Push blocked by side rail!")
+            # Silently fail during RL training (no print)
             return False
 
-        # 4. Execution: Shift pieces in reverse order to avoid overwriting
-        for pos in reversed(chain):
+        # 3. Kill Zone Check - ALLOW pushes into kill zones (that's how you win!)
+        # We'll handle pieces pushed into kill zones by removing them and checking for victory
+
+        # 4. Check if anchor is in the chain (but allow the push anyway)
+        anchor_in_chain = False
+        if self.board.anchor_pos[0] is not None:
+            for pos in chain:
+                if pos == self.board.anchor_pos:
+                    anchor_in_chain = True
+                    break
+
+        # 5. Execution: Shift pieces in reverse order to avoid overwriting
+        # If anchor is in chain, pieces before anchor can move, but anchor and pieces after it cannot
+        pieces_moved = False
+        
+        # Find anchor position in chain to determine what can move
+        anchor_index = -1
+        if anchor_in_chain:
+            for i, pos in enumerate(chain):
+                if pos == self.board.anchor_pos:
+                    anchor_index = i
+                    break
+        
+        # Track pieces pushed into kill zone (multiple pieces can be pushed at once)
+        pieces_pushed_off = []  # List of (piece, team) tuples
+        
+        # Move pieces in reverse order (from end of chain to start)
+        for i in range(len(chain) - 1, -1, -1):
+            pos = chain[i]
             curr_y, curr_x = pos
+            
+            # If anchor is in chain, don't move anchor or any pieces after it (earlier in chain)
+            if anchor_in_chain and i <= anchor_index:
+                # This is the anchor or a piece after it - don't move
+                continue
+            
             new_y, new_x = curr_y + dy, curr_x + dx
             
-            moving_piece = self.board.pieces[curr_y][curr_x]
-            self.board.pieces[curr_y][curr_x] = None # Clear old spot
+            # Safety check: don't move if destination would be the anchor position
+            if self.board.anchor_pos[0] is not None and (new_y, new_x) == self.board.anchor_pos:
+                # Can't move into anchor position - this piece is blocked by anchor
+                # Don't clear the piece's current position - it stays where it is
+                continue
             
-            # 5. Victory Check: Did a piece land on a -1? [cite: 8, 20, 43]
+            moving_piece = self.board.pieces[curr_y][curr_x]
+            if moving_piece is None:
+                # Piece already moved or doesn't exist - skip
+                continue
+            
+            # Check if destination is already occupied (shouldn't happen in normal flow, but safety check)
+            if self.board.pieces[new_y][new_x] is not None:
+                # Destination occupied - can't move here, don't clear current position
+                continue
+            
+            # Check if destination is kill zone - ALLOW it! (this is how you win)
             if self.board.is_kill_zone(new_y, new_x):
-                self.handle_win(self.current_player)
+                # Piece is pushed into kill zone - remove it from board
+                self.board.pieces[curr_y][curr_x] = None  # Clear old spot
+                pieces_pushed_off.append((moving_piece, moving_piece.team))
+                pieces_moved = True
+                # Don't place piece in kill zone - it's removed from play
             else:
+                # Normal move - place piece at destination
+                self.board.pieces[curr_y][curr_x] = None  # Clear old spot
                 self.board.pieces[new_y][new_x] = moving_piece
+                pieces_moved = True
+        
+        # Log the push action
+        self.log_action('push', piece=(y, x), direction=direction)
 
-        # 6. Update Anchor: Share one anchor on the square piece that pushed [cite: 36, 41]
+        # 6. Update Anchor: Share one anchor on the square piece that pushed 
         # The square piece moves to (y + dy, x + dx), so anchor goes there
-        self.board.anchor_pos = (y + dy, x + dx)
+        # Note: Even if nothing moved (anchor blocked), we still update the anchor position
+        # If the push was blocked by an anchor, the pusher didn't move, so anchor stays at (y, x)
+        if anchor_in_chain:
+            anchor_y, anchor_x = y, x
+        else:
+            anchor_y, anchor_x = y + dy, x + dx
+            
+        if self.board.is_on_board(anchor_y, anchor_x) and not self.board.is_kill_zone(anchor_y, anchor_x):
+            self.board.anchor_pos = (anchor_y, anchor_x)
+        else:
+            # Anchor piece was pushed into kill zone, clear anchor
+            self.board.anchor_pos = (None, None)
+        
+        # 7. Check for victory if pieces were pushed into kill zone
+        if pieces_pushed_off:
+            # Track all pieces that were pushed off
+            for piece, team in pieces_pushed_off:
+                if piece.shape == 'square':
+                    self.pieces_pushed_off[team]['squares'] += 1
+                else:  # round
+                    self.pieces_pushed_off[team]['rounds'] += 1
+            
+            # Check win condition once after tracking all pieces
+            # Use check_game_over() to avoid code duplication
+            if self.check_game_over():
+                self.push_completed = True
+                return True
+        
+        # Push completed successfully (no win)
         self.push_completed = True
         return True
-
-    def handle_win(self, winner):
-        """Sets the game over state and winner."""
-        self.game_over = True
-        self.winner = winner
+    
+    def check_game_over(self):
+        """
+        Check if the game should be over based on current board state.
+        Win condition: 2 squares OR 1 round piece pushed off the board.
+        
+        Returns:
+            bool: True if game is over, False otherwise
+        """
+        if self.game_over:
+            return True
+        
+        # Check win condition: 2 squares OR 1 round piece pushed off
+        white_squares_off = self.pieces_pushed_off['white']['squares']
+        white_rounds_off = self.pieces_pushed_off['white']['rounds']
+        black_squares_off = self.pieces_pushed_off['black']['squares']
+        black_rounds_off = self.pieces_pushed_off['black']['rounds']
+        
+        # White loses if 2 squares or 1 round pushed off
+        if white_squares_off >= 2 or white_rounds_off >= 1:
+            self.game_over = True
+            self.winner = 'black'
+            return True
+        
+        # black loses if 2 squares or 1 round pushed off
+        if black_squares_off >= 2 or black_rounds_off >= 1:
+            self.game_over = True
+            self.winner = 'white'
+            return True
+        
+        return False
 
     def has_legal_push(self):
-        """Checks if the current player has any legal push available [cite: 51]."""
+        """Checks if the current player has any legal push available ."""
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Up, Down, Left, Right
         
         for y in range(10):
@@ -113,18 +306,10 @@ class GameState:
                         # Try a test push to see if it's legal
                         chain, landing_spot = self.board.get_push_chain(y, x, dy, dx)
                         
-                        # Check if anchor blocks this push
-                        anchor_blocks = False
-                        if self.board.anchor_pos[0] is not None:  # Check if anchor exists
-                            for pos in chain:
-                                if pos == self.board.anchor_pos:
-                                    anchor_blocks = True
-                                    break
-                        
-                        # Check if side rail blocks
+                        # Check if side rail blocks (anchor no longer blocks)
                         side_rail_blocks = not self.board.is_on_board(*landing_spot)
                         
-                        if not anchor_blocks and not side_rail_blocks:
+                        if not side_rail_blocks:
                             return True
         
         return False
@@ -133,20 +318,20 @@ class GameState:
     def create_initial_game():
         board = PushFightBoard()
         
-        # White Team (Rows 1-4) [cite: 14]
-        # Most players put 4 pieces at the center line [cite: 16]
+        # White Team (Rows 1-4) 
+        # Most players put 4 pieces at the center line 
         board.pieces[4][0] = Piece('white', 'square')
         board.pieces[4][1] = Piece('white', 'square')
         board.pieces[4][2] = Piece('white', 'square')
         board.pieces[4][3] = Piece('white', 'round')
         board.pieces[3][1] = Piece('white', 'round')
 
-        # Brown Team (Rows 5-8) [cite: 17]
-        board.pieces[5][0] = Piece('brown', 'square')
-        board.pieces[5][1] = Piece('brown', 'square')
-        board.pieces[5][2] = Piece('brown', 'square')
-        board.pieces[5][3] = Piece('brown', 'round')
-        board.pieces[6][1] = Piece('brown', 'round')
+        # black Team (Rows 5-8) 
+        board.pieces[5][0] = Piece('black', 'square')
+        board.pieces[5][1] = Piece('black', 'square')
+        board.pieces[5][2] = Piece('black', 'square')
+        board.pieces[5][3] = Piece('black', 'round')
+        board.pieces[6][1] = Piece('black', 'round')
         
         return GameState(board)
 
@@ -159,7 +344,8 @@ class GameState:
             'moves_made': self.moves_made,
             'push_completed': self.push_completed,
             'game_over': self.game_over,
-            'winner': self.winner
+            'winner': self.winner,
+            'pieces_pushed_off': self.pieces_pushed_off
         }
 
     @staticmethod
@@ -173,6 +359,11 @@ class GameState:
         game.push_completed = data['push_completed']
         game.game_over = data['game_over']
         game.winner = data['winner']
+        # Handle backward compatibility - initialize if not present
+        game.pieces_pushed_off = data.get('pieces_pushed_off', {
+            'white': {'squares': 0, 'rounds': 0},
+            'black': {'squares': 0, 'rounds': 0}
+        })
         return game
 
     def save_to_file(self, filepath):
@@ -199,11 +390,11 @@ class GameState:
         """
         Check if a position is on the player's side of the centerline.
         White team: rows 0-4 (north of center)
-        Brown team: rows 5-9 (south of center)
+        black team: rows 5-9 (south of center)
         """
         if team == 'white':
             return 0 <= y <= 4
-        elif team == 'brown':
+        elif team == 'black':
             return 5 <= y <= 9
         return False
 
@@ -220,17 +411,8 @@ class GameState:
         Returns:
             dict: {'squares': int, 'rounds': int, 'total': int}
         """
-        squares = 0
-        rounds = 0
-        
-        for y in range(10):
-            for x in range(4):
-                piece = self.board.get_piece(y, x)
-                if piece and piece.team == team:
-                    if piece.shape == 'square':
-                        squares += 1
-                    elif piece.shape == 'round':
-                        rounds += 1
+        squares = self.count_square_pieces(team)
+        rounds = self.count_round_pieces(team)
         
         return {
             'squares': squares,
@@ -245,7 +427,7 @@ class GameState:
         Args:
             y: Row (0-9)
             x: Column (0-3)
-            team: 'white' or 'brown'
+            team: 'white' or 'black'
             shape: 'square' or 'round'
         
         Returns:
@@ -259,8 +441,8 @@ class GameState:
             return False, f"Invalid shape: {shape}. Must be 'square' or 'round'"
         
         # Validate team
-        if team not in ['white', 'brown']:
-            return False, f"Invalid team: {team}. Must be 'white' or 'brown'"
+        if team not in ['white', 'black']:
+            return False, f"Invalid team: {team}. Must be 'white' or 'black'"
         
         # Check if position is on player's side
         if not self._is_on_player_side(y, team):
@@ -312,6 +494,25 @@ class GameState:
         self.board.pieces[y][x] = None
         return True, f"Piece removed from ({y}, {x})"
 
+    def _validate_team_placement(self, team, required_squares=3, required_rounds=2):
+        """
+        Validate that a team has the required number of pieces.
+        
+        Args:
+            team: 'white' or 'black'
+            required_squares: Required number of square pieces
+            required_rounds: Required number of round pieces
+            
+        Returns:
+            tuple: (is_valid: bool, error_message: str or None)
+        """
+        status = self.get_placement_status(team)
+        if status['squares'] != required_squares:
+            return False, f"{team.capitalize()} team must have exactly {required_squares} square pieces (currently {status['squares']})"
+        if status['rounds'] != required_rounds:
+            return False, f"{team.capitalize()} team must have exactly {required_rounds} round pieces (currently {status['rounds']})"
+        return True, None
+    
     def can_start_game(self):
         """
         Check if both teams have valid piece placement (3 squares + 2 rounds each).
@@ -322,20 +523,15 @@ class GameState:
         if not self.setup_mode:
             return False, "Game is not in setup mode"
         
-        white_status = self.get_placement_status('white')
-        brown_status = self.get_placement_status('brown')
+        # Validate white team
+        is_valid, error = self._validate_team_placement('white')
+        if not is_valid:
+            return False, error
         
-        # Check white team
-        if white_status['squares'] != 3:
-            return False, f"White team must have exactly 3 square pieces (currently {white_status['squares']})"
-        if white_status['rounds'] != 2:
-            return False, f"White team must have exactly 2 round pieces (currently {white_status['rounds']})"
-        
-        # Check brown team
-        if brown_status['squares'] != 3:
-            return False, f"Brown team must have exactly 3 square pieces (currently {brown_status['squares']})"
-        if brown_status['rounds'] != 2:
-            return False, f"Brown team must have exactly 2 round pieces (currently {brown_status['rounds']})"
+        # Validate black team
+        is_valid, error = self._validate_team_placement('black')
+        if not is_valid:
+            return False, error
         
         return True, "Both teams have valid piece placement"
 

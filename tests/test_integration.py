@@ -22,17 +22,17 @@ class TestGameWorkflow:
             success, _ = game.place_piece(3, i, 'white', 'round')
             assert success is True
         
-        # Place brown pieces
+        # Place black pieces
         for i in range(3):
-            success, _ = game.place_piece(5, i, 'brown', 'square')
+            success, _ = game.place_piece(5, i, 'black', 'square')
             assert success is True
         for i in range(2):
-            success, _ = game.place_piece(6, i, 'brown', 'round')
+            success, _ = game.place_piece(6, i, 'black', 'round')
             assert success is True
-        
+
         # Verify placement
         white_status = game.get_placement_status('white')
-        brown_status = game.get_placement_status('brown')
+        brown_status = game.get_placement_status('black')
         assert white_status['squares'] == 3
         assert white_status['rounds'] == 2
         assert brown_status['squares'] == 3
@@ -91,16 +91,16 @@ class TestGameWorkflow:
         # Create and modify game
         game = GameState.create_initial_game()
         game.moves_made = 2
-        game.current_player = 'brown'
-        
+        game.current_player = 'black'
+
         # Save
         save_path = save_game(game, 'test_workflow')
         assert save_path is not None
-        
+
         # Load
         loaded = load_game('test_workflow')
         assert loaded.moves_made == 2
-        assert loaded.current_player == 'brown'
+        assert loaded.current_player == 'black'
         
         # Verify board state
         for y in range(10):
@@ -123,7 +123,7 @@ class TestGameWorkflow:
         game = GameState.create_custom_game()
         game.place_piece(4, 0, 'white', 'square')
         game.place_piece(4, 1, 'white', 'square')
-        game.place_piece(5, 0, 'brown', 'square')
+        game.place_piece(5, 0, 'black', 'square')
         
         # Save
         save_game(game, 'test_setup_workflow')
@@ -146,7 +146,7 @@ class TestGameWorkflow:
         # Complete a turn (simulate push)
         game.push_completed = True
         game.switch_turn()
-        assert game.current_player == 'brown'
+        assert game.current_player == 'black'
         assert game.moves_made == 0
         assert game.push_completed is False
         

@@ -1,3 +1,6 @@
+from typing import Any
+
+
 from collections import deque
 
 
@@ -12,7 +15,7 @@ class PushFightBoard:
             [ 0,  0,  0,  0], # Row 3
             [ 0,  0,  0,  0], # Row 4 (White starts N of center)
             # --- Center Line ---
-            [ 0,  0,  0,  0], # Row 5 (Brown starts S of center)
+            [ 0,  0,  0,  0], # Row 5 (black starts S of center)
             [ 0,  0,  0,  0], # Row 6
             [-1,  0,  0,  0], # Row 7
             [-1,  0,  0, -1], # Row 8
@@ -28,15 +31,15 @@ class PushFightBoard:
         """Checks if a coordinate is within the 10x4 array and not a side rail."""
         if 0 <= y < 10 and 0 <= x < 4:
             # Side rails are implied: any coordinate in the array is 'on' the board,
-            # but -1 cells are the end-zones[cite: 49].
+            # but -1 cells are the end-zones.
             return True
         return False
 
     def get_piece(self, y, x):
-        """Returns the Piece object at (y, x) if it exists[cite: 10, 11]."""
+        """Returns the Piece object at (y, x) if it exists."""
         if self.is_on_board(y, x):
             return self.pieces[y][x]
-        return "OUT_OF_BOUNDS" # Represents the side rails [cite: 49]
+        return "OUT_OF_BOUNDS" # Represents the side rails 
 
     def is_occupied(self, y, x):
         """True if there is a game piece on this tile."""
@@ -44,7 +47,7 @@ class PushFightBoard:
         return piece is not None and piece != "OUT_OF_BOUNDS"
 
     def is_kill_zone(self, y, x):
-        """Checks if the piece has been pushed off into the -1 area[cite: 8, 20, 42]."""
+        """Checks if the piece has been pushed off into the -1 area."""
         if self.is_on_board(y, x):
             return self.grid[y][x] == -1
         return False
@@ -54,12 +57,12 @@ class PushFightBoard:
         Returns a set of all (y, x) coordinates a piece at start_pos can reach.
         Uses BFS to find all connected empty spaces.
         """
-        valid_destinations = set()
+        valid_destinations = set[Any]()
         visited = set()
         queue = deque([(start_y, start_x)])
         visited.add((start_y, start_x))
         
-        # Directions: Up, Down, Left, Right (No diagonals [cite: 21])
+        # Directions: Up, Down, Left, Right (No diagonals )
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         
         while queue:
@@ -70,7 +73,7 @@ class PushFightBoard:
                 
                 # 1. Must be within 10x4 array bounds
                 # 2. Must be a playable space (grid value 0, not -1)
-                # 3. Must not be occupied by another piece [cite: 50]
+                # 3. Must not be occupied by another piece 
                 # 4. Must not have been visited already
                 if ((next_y, next_x) not in visited and
                     self.is_on_board(next_y, next_x) and 

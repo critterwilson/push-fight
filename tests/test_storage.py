@@ -97,7 +97,7 @@ class TestStorage:
         # Place some pieces
         game.place_piece(4, 0, 'white', 'square')
         game.place_piece(4, 1, 'white', 'square')
-        game.place_piece(5, 0, 'brown', 'square')
+        game.place_piece(5, 0, 'black', 'square')
         
         save_game(game, 'test_round_trip')
         loaded = load_game('test_round_trip')
