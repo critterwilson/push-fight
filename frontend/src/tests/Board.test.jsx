@@ -123,7 +123,8 @@ describe('Board', () => {
         onPushDir={onPushDir}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: /push up/i }))
+    // dy=-1 is visual LEFT after board transposition
+    fireEvent.click(screen.getByRole('button', { name: /push left/i }))
     expect(onPushDir).toHaveBeenCalledWith(-1, 0)
   })
 
@@ -175,8 +176,8 @@ describe('Board', () => {
       '4,0': { team: 'white', shape: 'square', name: 'sleeve' },
       '4,1': { team: 'white', shape: 'square', name: 'lapel'  },
       '4,2': { team: 'white', shape: 'square', name: 'belt'   },
-      '4,3': { team: 'white', shape: 'round',  name: 'choke'  },
-      '3,1': { team: 'white', shape: 'round',  name: 'lock'   },
+      '4,3': { team: 'white', shape: 'round',  name: 'neck'   },
+      '3,1': { team: 'white', shape: 'round',  name: 'joint'  },
     }
     const { container } = render(
       <Board {...DEFAULT_PROPS} gameState={makeGameState({ pieces })} />
@@ -185,8 +186,8 @@ describe('Board', () => {
     expect(texts).toContain('sleeve')
     expect(texts).toContain('lapel')
     expect(texts).toContain('belt')
-    expect(texts).toContain('choke')
-    expect(texts).toContain('lock')
+    expect(texts).toContain('neck')
+    expect(texts).toContain('joint')
     // Team letters should NOT appear for named pieces
     expect(texts).not.toContain('W')
   })

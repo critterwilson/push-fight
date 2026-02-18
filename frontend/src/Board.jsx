@@ -29,6 +29,7 @@ const C = {
 export function Board({
   gameState, selectedPiece, validMoves, validPushDirs,
   pendingAiAction, onCellClick, onPushDir,
+  setupMode, setupPlayer,
 }) {
   const W = 10 * CELL
   const H = 4 * CELL
@@ -83,6 +84,10 @@ export function Board({
             && pendingAiAction.piece[0] === y && pendingAiAction.piece[1] === x
           const isAiHighlighted = isAiSrc || isAiPusher
 
+          // Setup: highlight empty cells on the current setup player's half
+          const onSetupHalf = setupPlayer === 'white' ? y <= 4 : y >= 5
+          const isSetupTarget = setupMode && onSetupHalf && !cell.killZone && !cell.piece
+
           return (
             <BoardCell
               key={`${y}-${x}`}
@@ -90,6 +95,7 @@ export function Board({
               isSelected={isSel}
               isValidMove={isVM}
               isAiHighlighted={isAiHighlighted}
+              isSetupTarget={isSetupTarget}
               onCellClick={onCellClick}
             />
           )
@@ -136,20 +142,25 @@ function cellAriaLabel(cell, y, x) {
   return `${name} (${cell.piece.team})${anchor}, ${coord}`
 }
 
-function BoardCell({ cell, y, x, isSelected, isValidMove, isAiHighlighted, onCellClick }) {
+function BoardCell({ cell, y, x, isSelected, isValidMove, isAiHighlighted, isSetupTarget, onCellClick }) {
   const { killZone, piece, isAnchor } = cell
 
   const fill = killZone
     ? C.killZoneFill
     : isSelected
     ? 'rgba(255, 215, 0, 0.2)'
+    : isSetupTarget
+    ? 'rgba(100, 200, 120, 0.08)'
     : 'transparent'
   const borderColor = isSelected
     ? C.selBorder
     : isAiHighlighted
     ? C.aiHighlight
+    : isSetupTarget
+    ? 'rgba(100, 200, 120, 0.5)'
     : 'rgba(0, 0, 0, 0.15)'
-  const borderW = isSelected || isAiHighlighted ? 2.5 : 1
+  const borderW = isSelected || isAiHighlighted ? 2.5 : isSetupTarget ? 1.5 : 1
+  const strokeDash = isSetupTarget ? '4 3' : undefined
 
   const handleKey = (e) => {
     if (!killZone && (e.key === 'Enter' || e.key === ' ')) {
@@ -175,6 +186,7 @@ function BoardCell({ cell, y, x, isSelected, isValidMove, isAiHighlighted, onCel
         width={CELL - 2} height={CELL - 2}
         fill={fill}
         stroke={borderColor} strokeWidth={borderW}
+        strokeDasharray={strokeDash}
         rx={3}
       />
 
@@ -294,7 +306,8 @@ function PushArrow({ py, px, dy, dx, onPushDir }) {
   const hw  = dy !== 0 ? HIT : CELL / 2
   const hh  = dx !== 0 ? HIT : CELL / 2
 
-  const dirLabel = dy === -1 ? 'up' : dy === 1 ? 'down' : dx === -1 ? 'left' : 'right'
+  // Board is transposed: dy changes are left/right visually, dx changes are up/down
+  const dirLabel = dy === -1 ? 'left' : dy === 1 ? 'right' : dx === -1 ? 'up' : 'down'
 
   return (
     <g

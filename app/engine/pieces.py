@@ -3,7 +3,7 @@ class Piece:
         self.team = team      # 'white' or 'black' [cite: 7]
         self.shape = shape    # 'square' or 'round'
         self.is_square = (shape == 'square')
-        self.name = name      # e.g. 'sleeve', 'lapel', 'belt', 'choke', 'lock'
+        self.name = name      # e.g. 'sleeve', 'lapel', 'belt', 'neck', 'joint'
 
     def __repr__(self):
         # Useful for debugging the 2D array in the console

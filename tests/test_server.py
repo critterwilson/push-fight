@@ -38,13 +38,30 @@ def client():
         yield c
 
 
+def _complete_setup(client, sid):
+    """Place all pieces for both sides (mirroring initial layout) and start the game."""
+    white = [("sleeve", 4, 0), ("lapel", 4, 1), ("belt", 4, 2), ("neck", 4, 3), ("joint", 3, 1)]
+    black = [("sleeve", 5, 0), ("lapel", 5, 1), ("belt", 5, 2), ("neck", 5, 3), ("joint", 6, 1)]
+    for name, y, x in white:
+        r = client.post(f"/api/game/{sid}/setup/place", json={"y": y, "x": x, "name": name})
+        assert r.status_code == 200, f"White place {name} failed: {r.json()}"
+    client.post(f"/api/game/{sid}/setup/confirm")
+    for name, y, x in black:
+        r = client.post(f"/api/game/{sid}/setup/place", json={"y": y, "x": x, "name": name})
+        assert r.status_code == 200, f"Black place {name} failed: {r.json()}"
+    resp = client.post(f"/api/game/{sid}/setup/confirm")
+    assert resp.status_code == 200
+    return resp.json()["state"]
+
+
 @pytest.fixture
 def pvp_session(client):
-    """Create a PvP session and return (client, session_id, initial_state)."""
+    """Create a PvP session, complete setup, and return (client, session_id, play_state)."""
     resp = client.post("/api/game", json={"mode": "pvp", "difficulty": "medium"})
     assert resp.status_code == 200
-    body = resp.json()
-    return client, body["sessionId"], body["state"]
+    sid = resp.json()["sessionId"]
+    state = _complete_setup(client, sid)
+    return client, sid, state
 
 
 # ---------------------------------------------------------------------------
@@ -85,18 +102,26 @@ class TestCreateGame:
         assert len(board) == 10
         assert all(len(row) == 4 for row in board)
 
-    def test_pieces_have_names(self, client):
-        """Pieces created at game start should carry BJJ names."""
-        resp = client.post("/api/game", json={"mode": "pvp", "difficulty": "medium"})
-        board = resp.json()["state"]["board"]
+    def test_pieces_have_names(self, pvp_session):
+        """After setup, all BJJ piece names should appear on the board."""
+        _, _, state = pvp_session
         names = [
             cell["piece"]["name"]
-            for row in board
+            for row in state["board"]
             for cell in row
             if cell.get("piece")
         ]
-        for expected in ("sleeve", "lapel", "belt", "choke", "lock"):
+        for expected in ("sleeve", "lapel", "belt", "neck", "joint"):
             assert expected in names, f"Expected piece name '{expected}' not found"
+
+    def test_setup_mode_fields_on_new_game(self, client):
+        """A freshly created game should be in setup mode with placement status."""
+        resp = client.post("/api/game", json={"mode": "pvp", "difficulty": "medium"})
+        state = resp.json()["state"]
+        assert state["setupMode"] is True
+        assert "placementStatus" in state
+        assert state["placementStatus"]["white"]["unplaced"] == ["sleeve", "lapel", "belt", "neck", "joint"]
+        assert state["placementStatus"]["black"]["unplaced"] == ["sleeve", "lapel", "belt", "neck", "joint"]
 
 
 # ---------------------------------------------------------------------------

@@ -55,9 +55,9 @@ class TestPiece:
         assert d['name'] == 'lapel'
 
     def test_piece_name_roundtrip(self):
-        piece = Piece('black', 'round', name='choke')
+        piece = Piece('black', 'round', name='neck')
         restored = Piece.from_dict(piece.to_dict())
-        assert restored.name == 'choke'
+        assert restored.name == 'neck'
 
     def test_piece_from_dict_missing_name_is_backward_compatible(self):
         """Pieces saved before the name field was added should load without error."""
@@ -859,20 +859,20 @@ class TestInitialGamePieceNames:
         names = sorted(p.name for p in squares)
         assert names == ['belt', 'lapel', 'sleeve']
 
-    def test_white_rounds_are_choke_and_lock(self):
+    def test_white_rounds_are_neck_and_joint(self):
         rounds = [p for p in self._pieces_by_team('white') if p.shape == 'round']
         names = sorted(p.name for p in rounds)
-        assert names == ['choke', 'lock']
+        assert names == ['joint', 'neck']
 
     def test_black_squares_are_sleeve_lapel_belt(self):
         squares = [p for p in self._pieces_by_team('black') if p.shape == 'square']
         names = sorted(p.name for p in squares)
         assert names == ['belt', 'lapel', 'sleeve']
 
-    def test_black_rounds_are_choke_and_lock(self):
+    def test_black_rounds_are_neck_and_joint(self):
         rounds = [p for p in self._pieces_by_team('black') if p.shape == 'round']
         names = sorted(p.name for p in rounds)
-        assert names == ['choke', 'lock']
+        assert names == ['joint', 'neck']
 
     def test_every_piece_has_a_name(self):
         for y in range(10):

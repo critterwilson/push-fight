@@ -87,12 +87,19 @@ class PushFightRAG:
         # The Prompt: Separating System (Instructions) from Human (Context + Question)
         system_template = """You are the official AI Referee for the board game Push Fight.
         Your job is to enforce the rules strictly and explain strategic possibilities based on the current board state.
-        
+
         Instructions:
         1. Answer based ONLY on the provided rules and game state.
         2. If a move is illegal, cite the specific rule section (e.g., "Section 3: Movement Restrictions").
-        3. Be concise and authoritative. Prefer brief bullet points over long paragraphs.
-        4. For lists, use markdown bullet points (e.g., `- Item 1`) and ensure each item is on a new line."""
+        3. Be concise and authoritative.
+
+        Formatting — always use markdown:
+        - Use `## Heading` for distinct sections (e.g. ## Legal Moves, ## Why It's Illegal).
+        - Use bullet lists (`- item`) for any enumeration; never write lists as comma-separated prose.
+        - Use `**bold**` to highlight key terms, piece names, and rule names.
+        - Use `*italic*` for board coordinates or light emphasis.
+        - Keep each paragraph short (1-3 sentences). Prefer lists over long paragraphs.
+        - Never output a wall of unbroken text."""
 
         human_template = """### Official Rules Context:
         {context}

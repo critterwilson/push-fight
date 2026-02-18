@@ -46,6 +46,7 @@ from app.server.models import (
     CreateGameRequest,
     MoveRequest,
     PushRequest,
+    SetupPlaceRequest,
 )
 from app.server.session import SessionManager
 from app.server.state_serializer import serialize_state
@@ -113,13 +114,35 @@ def _get_session_or_404(session_id: str):
 # AI turn execution (background task)
 # ---------------------------------------------------------------------------
 
+def _random_ai_action(game) -> dict | None:
+    """Pick a random valid move or push for the current player (no-model fallback)."""
+    import random
+    from app.rl.env import PushFightEnv
+    env = PushFightEnv()
+    env.game = game
+    env.current_phase = 'move' if game.can_move() else 'push'
+    valid = env._get_valid_actions()
+    if not valid:
+        return None
+    action_idx = random.choice(valid)
+    phase, data = env._decode_action(action_idx)
+    if phase == 'move':
+        py, px, dy, dx = data
+        return {'type': 'move', 'from': (py, px), 'to': (dy, dx)}
+    if phase == 'push':
+        py, px, direction = data
+        return {'type': 'push', 'piece': (py, px), 'direction': direction}
+    return None
+
+
 async def _run_ai_turn(session_id: str) -> None:
     """
     Execute the AI player's turn step-by-step, broadcasting each action and
     the resulting state over WebSocket so the frontend can animate moves.
+    Falls back to random valid actions when no trained model is loaded.
     """
     session = sessions.get(session_id)
-    if session is None or session.agent is None:
+    if session is None:
         return
 
     game = session.game
@@ -132,9 +155,9 @@ async def _run_ai_turn(session_id: str) -> None:
         if game.game_over or game.current_player != session.ai_team:
             break
 
-        # Get next action from the RL agent
+        # Get next action from the RL agent (or random fallback if no model)
         try:
-            action = agent.get_action(game)
+            action = agent.get_action(game) if agent is not None else _random_ai_action(game)
         except Exception as e:
             await _broadcast(session_id, {"event": "error", "message": str(e)})
             break
@@ -183,7 +206,8 @@ def health():
 
 @app.post("/api/game")
 def create_game(body: CreateGameRequest):
-    session = sessions.create(mode=body.mode, difficulty=body.difficulty)
+    ai_team = "black" if body.player_color == "white" else "white"
+    session = sessions.create(mode=body.mode, difficulty=body.difficulty, ai_team=ai_team)
     return {"sessionId": session.session_id, "state": serialize_state(session)}
 
 
@@ -191,6 +215,93 @@ def create_game(body: CreateGameRequest):
 def get_game(session_id: str):
     session = _get_session_or_404(session_id)
     return {"state": serialize_state(session)}
+
+
+# --- Setup phase ------------------------------------------------------------
+
+_PIECE_SHAPES = {
+    "sleeve": "square", "lapel": "square", "belt": "square",
+    "neck": "round", "joint": "round",
+}
+_SETUP_ROSTER = [
+    ("sleeve", "square"), ("lapel", "square"), ("belt", "square"),
+    ("neck", "round"), ("joint", "round"),
+]
+
+
+def _auto_place(game, team: str) -> None:
+    """Randomly fill a team's half with the full piece roster."""
+    import random
+    valid = [
+        (y, x) for y in range(10) for x in range(4)
+        if game._is_on_player_side(y, team) and game._is_playable_space(y, x)
+    ]
+    random.shuffle(valid)
+    for (name, shape), (y, x) in zip(_SETUP_ROSTER, valid):
+        game.place_piece(y, x, team, shape, name)
+
+
+@app.post("/api/game/{session_id}/setup/place")
+async def setup_place(session_id: str, body: SetupPlaceRequest):
+    session = _get_session_or_404(session_id)
+    game = session.game
+    if not game.setup_mode:
+        raise HTTPException(status_code=400, detail="Game is not in setup mode")
+    shape = _PIECE_SHAPES.get(body.name)
+    if shape is None:
+        raise HTTPException(status_code=400, detail=f"Unknown piece name: {body.name}")
+    success, message = game.place_piece(body.y, body.x, game.current_player, shape, body.name)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    state = serialize_state(session)
+    await _broadcast(session_id, {"event": "state_update", "state": state})
+    return {"success": True, "state": state}
+
+
+@app.delete("/api/game/{session_id}/setup/{y}/{x}")
+async def setup_remove(session_id: str, y: int, x: int):
+    session = _get_session_or_404(session_id)
+    game = session.game
+    if not game.setup_mode:
+        raise HTTPException(status_code=400, detail="Game is not in setup mode")
+    success, message = game.remove_piece(y, x)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    state = serialize_state(session)
+    await _broadcast(session_id, {"event": "state_update", "state": state})
+    return {"success": True, "state": state}
+
+
+@app.post("/api/game/{session_id}/setup/confirm")
+async def setup_confirm(session_id: str):
+    session = _get_session_or_404(session_id)
+    game = session.game
+    if not game.setup_mode:
+        raise HTTPException(status_code=400, detail="Game is not in setup mode")
+
+    confirming_player = game.current_player
+    valid, error = game._validate_team_placement(confirming_player)
+    if not valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    if session.mode == "pvai":
+        # Human confirmed → auto-place AI's half and start
+        _auto_place(game, session.ai_team)
+        game.start_game()
+    elif confirming_player == "white":
+        # PvP — hand over to black for placement (bypass switch_turn which requires a push)
+        game.current_player = "black"
+    else:
+        # Black confirms in PvP — start game
+        game.start_game()
+
+    state = serialize_state(session)
+    await _broadcast(session_id, {"event": "state_update", "state": state})
+
+    if state.get("isAiTurn"):
+        asyncio.create_task(_run_ai_turn(session_id))
+
+    return {"success": True, "state": state}
 
 
 # --- Actions ----------------------------------------------------------------

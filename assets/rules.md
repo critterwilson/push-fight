@@ -39,10 +39,10 @@ Each player has **two round pieces**. Round pieces can move but cannot initiate 
 
 | Piece Name | Submission Type | Can Push | Defeat Condition |
 |------------|----------------|----------|-----------------|
-| **Choke** | Strangulation submission | No | Losing just 1 round piece |
-| **Lock**  | Joint lock submission    | No | Losing just 1 round piece |
+| **Neck**  | Strangulation submission | No | Losing just 1 round piece |
+| **Joint** | Joint lock submission    | No | Losing just 1 round piece |
 
-Round pieces are high-value targets: losing **even one** round piece (Choke or Lock) is an immediate defeat. Protect them carefully.
+Round pieces are high-value targets: losing **even one** round piece (Neck or Joint) is an immediate defeat. Protect them carefully.
 
 ### Piece Summary: Point Values
 - Round pieces (Choke, Lock): worth **1 life each** — lose one and you lose the game.

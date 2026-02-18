@@ -59,8 +59,8 @@ const STANDARD_PIECES = {
   '4,0': { team: 'white', shape: 'square', name: 'sleeve' },
   '4,1': { team: 'white', shape: 'square', name: 'lapel'  },
   '4,2': { team: 'white', shape: 'square', name: 'belt'   },
-  '4,3': { team: 'white', shape: 'round',  name: 'choke'  },
-  '3,1': { team: 'white', shape: 'round',  name: 'lock'   },
+  '4,3': { team: 'white', shape: 'round',  name: 'neck'   },
+  '3,1': { team: 'white', shape: 'round',  name: 'joint'  },
 }
 
 // ---------------------------------------------------------------------------
@@ -193,9 +193,9 @@ describe('useVoiceControl — move command', () => {
     expect(onVoiceMove).toHaveBeenCalledWith([4, 1], [2, 2])
   })
 
-  it('parses "choke to a5"', () => {
+  it('parses "neck to a5"', () => {
     const { onVoiceMove } = setup()
-    act(() => { MockSpeechRecognition.instance.emit('choke to a5') })
+    act(() => { MockSpeechRecognition.instance.emit('neck to a5') })
     expect(onVoiceMove).toHaveBeenCalledWith([4, 3], [4, 0])
   })
 
@@ -222,25 +222,29 @@ describe('useVoiceControl — push command', () => {
   it('parses "lapel push down" and calls onVoicePush', () => {
     const { onVoicePush } = setup()
     act(() => { MockSpeechRecognition.instance.emit('lapel push down') })
-    expect(onVoicePush).toHaveBeenCalledWith([4, 1], [1, 0])
+    // Board is transposed: visual down = dx+1 = [0, 1]
+    expect(onVoicePush).toHaveBeenCalledWith([4, 1], [0, 1])
   })
 
   it('parses "belt push up"', () => {
     const { onVoicePush } = setup()
     act(() => { MockSpeechRecognition.instance.emit('belt push up') })
-    expect(onVoicePush).toHaveBeenCalledWith([4, 2], [-1, 0])
+    // Board is transposed: visual up = dx-1 = [0, -1]
+    expect(onVoicePush).toHaveBeenCalledWith([4, 2], [0, -1])
   })
 
   it('parses "sleeve push left"', () => {
     const { onVoicePush } = setup()
     act(() => { MockSpeechRecognition.instance.emit('sleeve push left') })
-    expect(onVoicePush).toHaveBeenCalledWith([4, 0], [0, -1])
+    // Board is transposed: visual left = dy-1 = [-1, 0]
+    expect(onVoicePush).toHaveBeenCalledWith([4, 0], [-1, 0])
   })
 
   it('parses "sleeve push right"', () => {
     const { onVoicePush } = setup()
     act(() => { MockSpeechRecognition.instance.emit('sleeve push right') })
-    expect(onVoicePush).toHaveBeenCalledWith([4, 0], [0, 1])
+    // Board is transposed: visual right = dy+1 = [1, 0]
+    expect(onVoicePush).toHaveBeenCalledWith([4, 0], [1, 0])
   })
 
   it('sets status to err when piece not found', () => {

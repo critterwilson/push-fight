@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
 const GRAMMAR = {
-  pieces: ['sleeve', 'lapel', 'belt', 'choke', 'lock'],
+  pieces: ['sleeve', 'lapel', 'belt', 'neck', 'joint'],
   dirs:   ['up', 'down', 'left', 'right'],
   cols:   { a: 0, b: 1, c: 2, d: 3 },
 }
@@ -138,7 +138,9 @@ export function useVoiceControl({ gameState, sessionId, onVoiceMove, onVoicePush
         return
       }
 
-      const dirMap = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }
+      // Board is transposed: game row (y) = SVG x-axis, game col (x) = SVG y-axis
+      // visual right = dy+1, visual left = dy-1, visual down = dx+1, visual up = dx-1
+      const dirMap = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }
       onVoicePush(pos, dirMap[dirStr])
       setLastCommand({ text, status: 'ok' })
       return

@@ -49,10 +49,15 @@ class PushFightAgent:
     def get_action(self, game_state):
         """
         Get the next action from the AI for the given game state.
-        
+
         Returns:
             dict: Action dictionary {'type': 'move'|'push', ...} or None
+                  Returns None during setup mode (server uses _auto_place instead).
         """
+        # Setup phase is handled by the server via _auto_place; RL not used here
+        if game_state.setup_mode:
+            return None
+
         # Sync environment
         self.env.game = game_state
         self.env.current_phase = 'move' if game_state.can_move() else 'push'

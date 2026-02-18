@@ -323,15 +323,15 @@ class GameState:
         board.pieces[4][0] = Piece('white', 'square', name='sleeve')
         board.pieces[4][1] = Piece('white', 'square', name='lapel')
         board.pieces[4][2] = Piece('white', 'square', name='belt')
-        board.pieces[4][3] = Piece('white', 'round',  name='choke')
-        board.pieces[3][1] = Piece('white', 'round',  name='lock')
+        board.pieces[4][3] = Piece('white', 'round',  name='neck')
+        board.pieces[3][1] = Piece('white', 'round',  name='joint')
 
         # black Team (Rows 5-8)
         board.pieces[5][0] = Piece('black', 'square', name='sleeve')
         board.pieces[5][1] = Piece('black', 'square', name='lapel')
         board.pieces[5][2] = Piece('black', 'square', name='belt')
-        board.pieces[5][3] = Piece('black', 'round',  name='choke')
-        board.pieces[6][1] = Piece('black', 'round',  name='lock')
+        board.pieces[5][3] = Piece('black', 'round',  name='neck')
+        board.pieces[6][1] = Piece('black', 'round',  name='joint')
         
         return GameState(board)
 
