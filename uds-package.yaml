@@ -1,0 +1,65 @@
+# UDS Package — Push Fight
+#
+# Processed by UDS Pepr to create:
+#   - Istio VirtualService routing <host>.uds.dev → push-fight-app:8000
+#   - Istio ServiceEntry / AuthorizationPolicies for service-to-service traffic
+#   - NetworkPolicies replacing the raw K8s ones in network-policies.yaml
+#
+# The tenant gateway serves the browser UI + WebSocket (/ws/*) on HTTPS.
+# Istio handles WebSocket upgrades automatically for HTTP/1.1 Upgrade requests.
+
+apiVersion: uds.dev/v1alpha1
+kind: Package
+metadata:
+  name: push-fight
+  namespace: push-fight
+spec:
+  # ── External exposure ──────────────────────────────────────────────────────
+  expose:
+    - service: push-fight-app
+      selector:
+        app: push-fight-app
+      host: push-fight        # resolves to push-fight.<domain> via UDS Core DNS
+      gateway: tenant
+      port: 8000
+      targetPort: 8000
+
+  # ── Network allow rules (UDS → Cilium / K8s NetworkPolicies) ──────────────
+  network:
+    allow:
+      # Ingress: Istio tenant gateway → app
+      - direction: Ingress
+        selector:
+          app: push-fight-app
+        remoteNamespace: istio-tenant-gateway
+        remoteSelector:
+          app: tenant-ingressgateway
+        port: 8000
+        description: "Tenant gateway to Push Fight UI/API"
+
+      # Egress: app → ChromaDB (vector store for RAG)
+      - direction: Egress
+        selector:
+          app: push-fight-app
+        remoteNamespace: push-fight
+        remoteSelector:
+          app: chromadb
+        port: 8000
+        description: "Push Fight app to ChromaDB"
+
+      # Egress: app → Ollama (LLM inference for RAG)
+      - direction: Egress
+        selector:
+          app: push-fight-app
+        remoteNamespace: push-fight
+        remoteSelector:
+          app: ollama
+        port: 11434
+        description: "Push Fight app to Ollama"
+
+      # Egress: DNS resolution via kube-dns
+      - direction: Egress
+        selector:
+          app: push-fight-app
+        remoteGenerated: KubeAPI
+        description: "Push Fight app DNS / kube-dns"

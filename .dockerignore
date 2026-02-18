@@ -1,0 +1,34 @@
+# Version control
+.git/
+.gitignore
+
+# Python runtime artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Frontend dev artifacts (Stage 1 builds fresh from source)
+frontend/node_modules/
+frontend/dist/
+
+# Local dev / tooling
+.tmuxinator.yml
+.vscode/
+.idea/
+
+# Docs (not needed at runtime)
+WEB_MIGRATION.md
+README.md
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Runtime data (created fresh in container)
+chroma_db/
+saves/
+game_logs/

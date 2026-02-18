@@ -12,6 +12,7 @@ components:
         files:
           - deployment.yaml
           - network-policies.yaml
+          - uds-package.yaml
     images:
       - "push-fight-app:latest"
       - "chromadb/chroma:latest"

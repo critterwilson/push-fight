@@ -124,6 +124,10 @@ spec:
       containers:
       - name: app
         image: push-fight-app:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
         env:
         - name: OLLAMA_HOST
           value: "http://ollama:11434"
@@ -131,6 +135,22 @@ spec:
           value: "chromadb"
         - name: CHROMA_PORT
           value: "8000"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
         resources:
           requests:
             cpu: "500m"
@@ -138,3 +158,28 @@ spec:
           limits:
             cpu: "2"
             memory: "2Gi"
+        volumeMounts:
+        - name: saves
+          mountPath: /app/saves
+      volumes:
+      - name: saves
+        emptyDir: {}
+        # To persist saves across pod restarts, replace emptyDir with a PVC:
+        # persistentVolumeClaim:
+        #   claimName: push-fight-saves
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: push-fight-app
+  namespace: push-fight
+  labels:
+    app: push-fight-app
+spec:
+  selector:
+    app: push-fight-app
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+    protocol: TCP
