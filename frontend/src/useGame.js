@@ -253,6 +253,29 @@ export function useGame() {
     }
   }, [sessionId])
 
+  // Direct action callers used by voice control (bypass click-state machine)
+  const voiceMove = useCallback(async (from, to) => {
+    if (!sessionId) return
+    try {
+      const data = await api.makeMove(sessionId, from, to)
+      setGameState(data.state)
+      deselect()
+    } catch (e) {
+      showError(e.message)
+    }
+  }, [sessionId, deselect, showError])
+
+  const voicePush = useCallback(async (pos, dir) => {
+    if (!sessionId) return
+    try {
+      const data = await api.makePush(sessionId, pos, dir)
+      setGameState(data.state)
+      deselect()
+    } catch (e) {
+      showError(e.message)
+    }
+  }, [sessionId, deselect, showError])
+
   const saveGame = useCallback(async (filename) => {
     if (!sessionId) return
     try {
@@ -291,5 +314,7 @@ export function useGame() {
     askReferee,
     saveGame,
     loadSave,
+    voiceMove,
+    voicePush,
   }
 }

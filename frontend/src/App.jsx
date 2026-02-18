@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import ThemeToggle from './ThemeToggle'
 import { useGame } from './useGame'
+import { useVoiceControl } from './useVoiceControl'
 import { Board } from './Board'
 import { StatusBar } from './StatusBar'
 import { GameControls } from './GameControls'
@@ -11,6 +13,14 @@ export default function App() {
   const [showModal, setShowModal] = useState(true)
   const [showChat, setShowChat]   = useState(false)
 
+  const voice = useVoiceControl({
+    gameState:    game.gameState,
+    sessionId:    game.sessionId,
+    onVoiceMove:  game.voiceMove,
+    onVoicePush:  game.voicePush,
+    onSkipMoves:  game.skipMoves,
+  })
+
   const handleStart = async (mode, difficulty) => {
     await game.createGame(mode, difficulty)
     setShowModal(false)
@@ -21,9 +31,20 @@ export default function App() {
       <header className="app-header">
         <h1 className="app-title">Push Fight</h1>
         <div className="header-actions">
+          <ThemeToggle />
           <ConnectionPip status={game.connectionStatus} />
           {game.sessionId && (
             <>
+              {voice.isSupported && (
+                <button
+                  className={`btn btn-ghost btn-small voice-toggle${voice.isListening ? ' voice-toggle--active' : ''}`}
+                  onClick={voice.toggle}
+                  aria-pressed={voice.isListening}
+                  aria-label={voice.isListening ? 'Stop voice control' : 'Start voice control'}
+                >
+                  {voice.isListening ? 'Mic On' : 'Mic Off'}
+                </button>
+              )}
               <button
                 className="btn btn-ghost btn-small"
                 onClick={() => setShowChat(v => !v)}
@@ -43,6 +64,20 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {/* Voice command feedback */}
+      {voice.lastCommand && (
+        <div
+          className={`voice-status voice-status--${voice.lastCommand.status}`}
+          aria-live="polite"
+        >
+          {voice.lastCommand.status === 'err'
+            ? `"${voice.lastCommand.text}" — ${voice.lastCommand.detail}`
+            : voice.lastCommand.status === 'no-match'
+            ? `"${voice.lastCommand.text}" — not recognised`
+            : `"${voice.lastCommand.text}"`}
+        </div>
+      )}
 
       {/* Error toast */}
       {game.error && (
@@ -103,6 +138,11 @@ export default function App() {
           onClose={game.sessionId ? () => setShowModal(false) : null}
         />
       )}
+
+      <footer className="app-footer">
+        <img src="/doug.svg" alt="Unicorn Delivery Service mascot" />
+        <span>Powered by Unicorn Delivery Service</span>
+      </footer>
     </div>
   )
 }
@@ -215,10 +255,10 @@ function NewGameModal({ onStart, onClose }) {
 
 function BoardLegend() {
   const items = [
-    { color: '#f0e8d8', stroke: '#b89a60', shape: 'square', label: 'White square' },
-    { color: '#f0e8d8', stroke: '#b89a60', shape: 'circle', label: 'White round'  },
-    { color: '#1e0e06', stroke: '#6a3818', shape: 'square', label: 'Black square' },
-    { color: '#1e0e06', stroke: '#6a3818', shape: 'circle', label: 'Black round'  },
+    { color: '#f0e8d8', stroke: '#b89a60', shape: 'square', label: 'Sleeve / Lapel / Belt' },
+    { color: '#f0e8d8', stroke: '#b89a60', shape: 'circle', label: 'Choke / Lock'  },
+    { color: '#1e0e06', stroke: '#6a3818', shape: 'square', label: 'Sleeve / Lapel / Belt' },
+    { color: '#1e0e06', stroke: '#6a3818', shape: 'circle', label: 'Choke / Lock'  },
     { color: '#ffd700', stroke: 'none',   shape: 'dot',    label: 'Anchor'       },
   ]
   return (

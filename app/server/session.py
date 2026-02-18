@@ -35,7 +35,6 @@ class SessionManager:
     _MODEL_PATHS = {
         "easy":   "models/easy.zip",
         "medium": "models/medium.zip",
-        "hard":   "models/push_fight_ppo.zip",
     }
     _DEFAULT_MODEL = "models/push_fight_ppo.zip"
 

@@ -29,7 +29,7 @@ def serialize_state(session: "GameSession") -> dict:
         for x in range(4):
             piece_obj = board.pieces[y][x]
             piece = (
-                {"team": piece_obj.team, "shape": piece_obj.shape}
+                {"team": piece_obj.team, "shape": piece_obj.shape, "name": piece_obj.name}
                 if piece_obj is not None
                 else None
             )

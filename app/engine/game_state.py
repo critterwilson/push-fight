@@ -318,20 +318,20 @@ class GameState:
     def create_initial_game():
         board = PushFightBoard()
         
-        # White Team (Rows 1-4) 
-        # Most players put 4 pieces at the center line 
-        board.pieces[4][0] = Piece('white', 'square')
-        board.pieces[4][1] = Piece('white', 'square')
-        board.pieces[4][2] = Piece('white', 'square')
-        board.pieces[4][3] = Piece('white', 'round')
-        board.pieces[3][1] = Piece('white', 'round')
+        # White Team (Rows 1-4)
+        # Most players put 4 pieces at the center line
+        board.pieces[4][0] = Piece('white', 'square', name='sleeve')
+        board.pieces[4][1] = Piece('white', 'square', name='lapel')
+        board.pieces[4][2] = Piece('white', 'square', name='belt')
+        board.pieces[4][3] = Piece('white', 'round',  name='choke')
+        board.pieces[3][1] = Piece('white', 'round',  name='lock')
 
-        # black Team (Rows 5-8) 
-        board.pieces[5][0] = Piece('black', 'square')
-        board.pieces[5][1] = Piece('black', 'square')
-        board.pieces[5][2] = Piece('black', 'square')
-        board.pieces[5][3] = Piece('black', 'round')
-        board.pieces[6][1] = Piece('black', 'round')
+        # black Team (Rows 5-8)
+        board.pieces[5][0] = Piece('black', 'square', name='sleeve')
+        board.pieces[5][1] = Piece('black', 'square', name='lapel')
+        board.pieces[5][2] = Piece('black', 'square', name='belt')
+        board.pieces[5][3] = Piece('black', 'round',  name='choke')
+        board.pieces[6][1] = Piece('black', 'round',  name='lock')
         
         return GameState(board)
 
@@ -420,7 +420,7 @@ class GameState:
             'total': squares + rounds
         }
 
-    def place_piece(self, y, x, team, shape):
+    def place_piece(self, y, x, team, shape, name=None):
         """
         Place a piece during setup phase with validation.
         
@@ -429,6 +429,7 @@ class GameState:
             x: Column (0-3)
             team: 'white' or 'black'
             shape: 'square' or 'round'
+            name: The name of the piece (e.g., 'sleeve')
         
         Returns:
             tuple: (success: bool, message: str)
@@ -466,7 +467,7 @@ class GameState:
                 return False, f"{team} team already has 2 round pieces (maximum)"
         
         # Place the piece
-        self.board.pieces[y][x] = Piece(team, shape)
+        self.board.pieces[y][x] = Piece(team, shape, name=name)
         return True, f"{team} {shape} piece placed at ({y}, {x})"
 
     def remove_piece(self, y, x):

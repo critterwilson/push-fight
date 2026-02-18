@@ -5,26 +5,74 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:            #0d1117;
-  --bg-panel:      #161b22;
+  /* --- BJJ Color Palette --- */
+  --belt-white:      #f5f5f5;
+  --belt-blue:       #0055d4;
+  --belt-purple:     #6a0dad;
+  --belt-brown:      #5d4037;
+  --belt-brown-dark: #4e342e;
+  --belt-black:      #121212;
+
+  /* --- Light Mode Defaults (White Belt Base) --- */
+  --bg:            var(--belt-white);
+  --bg-panel:      #ffffff;
+  --bg-input:      #e8e8e8;
+  --border:        #cccccc;
+  --border-light:  #dddddd;
+  --text:          var(--belt-black);
+  --text-dim:      #555555;
+  --text-muted:    #777777;
+
+  --accent-gold:   #ffd700;
+  --accent-green:  #2ea043;
+  --accent-orange: #d45500;
+  --accent-red:    #cf222e;
+
+  --white-team:    #333333;
+  --black-team:    #222222;
+
+  --btn-primary:   var(--belt-blue);
+  --btn-primary-h: #0044aa;
+  --btn-ghost:     transparent;
+  --btn-ghost-h:   rgba(0,0,0,0.1);
+
+  /* --- Theme-adaptive colors --- */
+  --accent-green-subtle: #e6f4ea;
+  --chat-user-bg:        #dce8f8;
+  --chat-ref-bg:         #f0f0f0;
+
+  --radius:        6px;
+  --radius-lg:     10px;
+  --shadow:        0 4px 24px rgba(0,0,0,0.15);
+}
+
+/* --- Dark Mode Overrides (Black Belt Base) --- */
+[data-theme="dark"] {
+  --bg:            var(--belt-black);
+  --bg-panel:      #1c1c1c;
   --bg-input:      #0d1117;
   --border:        #30363d;
   --border-light:  #21262d;
   --text:          #e6edf3;
   --text-dim:      #8b949e;
   --text-muted:    #484f58;
-  --accent-gold:   #ffd700;
+
   --accent-green:  #3fb950;
   --accent-orange: #ff6b1a;
   --accent-red:    #f85149;
+
   --white-team:    #f0e8d8;
-  --black-team:    #4a2010;
-  --btn-primary:   #238636;
-  --btn-primary-h: #2ea043;
-  --btn-ghost:     transparent;
+  --black-team:    #a0a0a0;
+
+  --btn-primary:   var(--belt-purple);
+  --btn-primary-h: #8a2be2;
   --btn-ghost-h:   #21262d;
-  --radius:        6px;
-  --radius-lg:     10px;
+
+  /* --- Theme-adaptive colors (dark overrides) --- */
+  --accent-green-subtle: #1a3a22;
+  --chat-user-bg:        #1f4a8a;
+  --chat-ref-bg:         #21262d;
+
   --shadow:        0 4px 24px rgba(0,0,0,0.5);
 }
 
@@ -32,9 +80,10 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ── Layout ──────────────────────────────────────────────── */
@@ -49,7 +98,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 14px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   position: sticky;
@@ -58,7 +107,7 @@ body {
 }
 
 .app-title {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--accent-gold);
@@ -66,14 +115,14 @@ body {
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 .game-layout {
   display: flex;
   flex: 1;
-  gap: 20px;
-  padding: 20px;
+  gap: 24px;
+  padding: 24px;
   align-items: flex-start;
   justify-content: center;
 }
@@ -87,7 +136,24 @@ body {
 }
 
 .board-wrap {
-  border: 2px solid var(--border);
+  /* Wood Texture Board */
+  background-color: var(--belt-brown);
+  background-image: 
+    repeating-linear-gradient(
+      45deg,
+      rgba(0,0,0,0.1) 0px,
+      rgba(0,0,0,0.1) 2px,
+      transparent 2px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--belt-brown),
+      var(--belt-brown) 15px,
+      var(--belt-brown-dark) 10px,
+      var(--belt-brown-dark) 20px
+    );
+  border: 8px solid var(--belt-brown-dark);
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow);
@@ -96,8 +162,8 @@ body {
 .side-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  width: 300px;
+  gap: 16px;
+  width: 340px;
   flex-shrink: 0;
 }
 
@@ -116,10 +182,10 @@ body {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .turn-info {
@@ -129,33 +195,33 @@ body {
 }
 
 .player-tag {
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 700;
 }
 .player-white { color: var(--white-team); }
-.player-black { color: #c89060; }
+.player-black { color: var(--black-team); }
 
 .phase-label {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-dim);
 }
 
 .ai-thinking {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--accent-orange);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
 .winner-banner {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 800;
   text-align: center;
   padding: 6px 0;
   letter-spacing: 0.06em;
 }
 .winner-white { color: var(--white-team); }
-.winner-black { color: #c89060; }
+.winner-black { color: var(--black-team); }
 
 .pieces-lost-row {
   display: flex;
@@ -170,9 +236,9 @@ body {
 }
 
 .pieces-lost-label {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-muted);
-  min-width: 68px;
+  min-width: 80px;
 }
 
 /* ── Game Controls ───────────────────────────────────────── */
@@ -181,10 +247,10 @@ body {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .full-width { width: 100%; }
@@ -196,27 +262,27 @@ body {
 }
 
 .push-label {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-dim);
 }
 
 /* 3×3 direction pad */
 .dir-pad {
   display: grid;
-  grid-template-columns: repeat(3, 40px);
-  grid-template-rows: repeat(3, 40px);
-  gap: 4px;
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(3, 46px);
+  gap: 5px;
   align-self: flex-start;
 }
 
 .dir-btn {
-  width: 40px;
-  height: 40px;
-  background: #21262d;
+  width: 46px;
+  height: 46px;
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
-  font-size: 16px;
+  font-size: 18px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
   display: flex;
@@ -236,9 +302,9 @@ body {
 }
 
 .dir-center {
-  width: 40px;
-  height: 40px;
-  background: #1a1f27;
+  width: 46px;
+  height: 46px;
+  background: var(--bg-panel);
   border-radius: var(--radius);
   border: 1px solid var(--border-light);
 }
@@ -274,12 +340,12 @@ body {
 .save-input:focus { outline: none; border-color: var(--accent-green); }
 
 .save-msg {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--accent-green);
 }
 
 .saves-list-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   margin-bottom: 2px;
 }
@@ -302,13 +368,13 @@ body {
 }
 
 .save-name {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-dim);
   font-family: monospace;
 }
 
 .saves-empty {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
@@ -324,10 +390,10 @@ body {
 }
 
 .chat-header {
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-dim);
 }
 
@@ -342,7 +408,7 @@ body {
 
 .chat-empty {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   text-align: center;
   margin-top: 20px;
   line-height: 1.6;
@@ -367,20 +433,20 @@ body {
 }
 
 .chat-msg-text {
-  padding: 7px 10px;
+  padding: 8px 12px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
 .chat-msg-user .chat-msg-text {
-  background: #1f4a8a;
+  background: var(--chat-user-bg);
   color: var(--text);
   border-bottom-right-radius: 3px;
 }
 
 .chat-msg-referee .chat-msg-text {
-  background: #21262d;
+  background: var(--chat-ref-bg);
   color: var(--text);
   border-bottom-left-radius: 3px;
 }
@@ -397,9 +463,9 @@ body {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 6px 10px;
+  padding: 7px 12px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
 }
 .chat-input:focus { outline: none; border-color: var(--accent-green); }
 
@@ -424,10 +490,10 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 7px 14px;
+  padding: 8px 16px;
   border-radius: var(--radius);
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
@@ -444,11 +510,11 @@ body {
 .btn-primary:not(:disabled):hover { background: var(--btn-primary-h); }
 
 .btn-secondary {
-  background: #21262d;
+  background: var(--bg-input);
   border-color: var(--border);
   color: var(--text);
 }
-.btn-secondary:not(:disabled):hover { background: #2d333b; border-color: var(--accent-orange); }
+.btn-secondary:not(:disabled):hover { background: var(--btn-ghost-h); border-color: var(--accent-orange); }
 
 .btn-ghost {
   background: transparent;
@@ -457,8 +523,14 @@ body {
 }
 .btn-ghost:not(:disabled):hover { background: var(--btn-ghost-h); color: var(--text); }
 
-.btn-small { padding: 4px 10px; font-size: 12px; }
-.btn-large { padding: 10px 24px; font-size: 15px; font-weight: 600; }
+.btn-small { padding: 6px 12px; font-size: 13px; }
+.btn-large { padding: 12px 28px; font-size: 16px; font-weight: 600; }
+
+.theme-toggle {
+  font-size: 18px;
+  padding: 6px 10px;
+  line-height: 1;
+}
 
 /* ── Modal ───────────────────────────────────────────────── */
 
@@ -540,7 +612,7 @@ body {
   align-items: center;
   gap: 7px;
   padding: 8px 14px;
-  background: #21262d;
+  background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
@@ -550,34 +622,34 @@ body {
 .radio-option input { display: none; }
 .radio-option.selected {
   border-color: var(--accent-green);
-  background: #1a3a22;
+  background: var(--accent-green-subtle);
   color: var(--accent-green);
 }
-.radio-option:hover:not(.selected) { border-color: var(--border-light); background: #2d333b; }
+.radio-option:hover:not(.selected) { border-color: var(--border-light); background: var(--bg-input); }
 
 .modal-note {
   font-size: 12px;
   color: var(--text-dim);
-  background: #21262d;
+  background: var(--bg-input);
   border-radius: var(--radius);
   padding: 8px 12px;
 }
-.modal-note strong { color: var(--white-team); }
+.modal-note strong { color: var(--text); }
 
 /* ── Board legend ─────────────────────────────────────────── */
 
 .board-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: 12px 20px;
   justify-content: center;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: 6px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
@@ -599,7 +671,37 @@ body {
   animation: fadeIn 0.2s ease;
 }
 
+/* ── Voice control ───────────────────────────────────────── */
+
+.voice-toggle--active {
+  color: var(--accent-green) !important;
+  border-color: var(--accent-green) !important;
+  animation: micPulse 1.2s ease-in-out infinite;
+}
+
+.voice-status {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 14px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  z-index: 199;
+  animation: fadeIn 0.2s ease;
+  pointer-events: none;
+}
+
+.voice-status--ok       { background: #0d2b16; border: 1px solid var(--accent-green); color: #7ddf9c; }
+.voice-status--err      { background: #3d1010; border: 1px solid var(--accent-red);   color: #ffaaaa; }
+.voice-status--no-match { background: #1c1c24; border: 1px solid #444;               color: var(--text-muted); }
+
 /* ── Animations ──────────────────────────────────────────── */
+
+@keyframes micPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -613,14 +715,14 @@ body {
 
 /* ── Responsive ──────────────────────────────────────────── */
 
-@media (max-width: 720px) {
+@media (max-width: 1100px) {
   .game-layout {
     flex-direction: column;
     align-items: center;
-    padding: 12px;
+    padding: 16px;
   }
 
-  .side-panel { width: 100%; max-width: 400px; }
+  .side-panel { width: 100%; max-width: 680px; }
 
   .board-panel { width: 100%; }
 }
@@ -677,3 +779,36 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+/* ── Piece Labels ────────────────────────────────────────── */
+
+.piece-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+  font-family: sans-serif;
+}
+.piece-label-white { fill: var(--belt-black); opacity: 0.75; }
+.piece-label-black { fill: var(--belt-white); opacity: 0.9; }
+
+/* ── Footer ──────────────────────────────────────────────── */
+
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.app-footer img {
+  width: 18px;
+  height: 18px;
+  opacity: 0.5;
+}

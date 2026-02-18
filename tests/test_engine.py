@@ -36,6 +36,35 @@ class TestPiece:
     def test_piece_from_dict_none(self):
         assert Piece.from_dict(None) is None
 
+    # ------------------------------------------------------------------
+    # name field (added for voice-control feature)
+    # ------------------------------------------------------------------
+
+    def test_piece_name_defaults_to_none(self):
+        piece = Piece('white', 'square')
+        assert piece.name is None
+
+    def test_piece_name_stored(self):
+        piece = Piece('white', 'square', name='sleeve')
+        assert piece.name == 'sleeve'
+
+    def test_piece_serialization_includes_name(self):
+        piece = Piece('white', 'square', name='lapel')
+        d = piece.to_dict()
+        assert 'name' in d
+        assert d['name'] == 'lapel'
+
+    def test_piece_name_roundtrip(self):
+        piece = Piece('black', 'round', name='choke')
+        restored = Piece.from_dict(piece.to_dict())
+        assert restored.name == 'choke'
+
+    def test_piece_from_dict_missing_name_is_backward_compatible(self):
+        """Pieces saved before the name field was added should load without error."""
+        old_data = {'team': 'white', 'shape': 'square'}  # no 'name' key
+        restored = Piece.from_dict(old_data)
+        assert restored.name is None
+
 
 # ============================================================
 # Board Tests
@@ -802,3 +831,79 @@ class TestEdgeCases:
         game.pieces_pushed_off['black']['squares'] = 2
         assert game.check_game_over() is True
         assert game.winner == 'white'
+
+
+# ============================================================
+# Initial Game Piece Names (voice-control feature)
+# ============================================================
+
+class TestInitialGamePieceNames:
+    """Verify that create_initial_game() assigns jiu-jitsu grip / submission names
+    to every piece and that names survive moves and serialization."""
+
+    def setup_method(self):
+        self.game = GameState.create_initial_game()
+
+    def _pieces_by_team(self, team):
+        """Return all Piece objects on the board for a given team."""
+        pieces = []
+        for y in range(10):
+            for x in range(4):
+                p = self.game.board.get_piece(y, x)
+                if p and p.team == team:
+                    pieces.append(p)
+        return pieces
+
+    def test_white_squares_are_sleeve_lapel_belt(self):
+        squares = [p for p in self._pieces_by_team('white') if p.shape == 'square']
+        names = sorted(p.name for p in squares)
+        assert names == ['belt', 'lapel', 'sleeve']
+
+    def test_white_rounds_are_choke_and_lock(self):
+        rounds = [p for p in self._pieces_by_team('white') if p.shape == 'round']
+        names = sorted(p.name for p in rounds)
+        assert names == ['choke', 'lock']
+
+    def test_black_squares_are_sleeve_lapel_belt(self):
+        squares = [p for p in self._pieces_by_team('black') if p.shape == 'square']
+        names = sorted(p.name for p in squares)
+        assert names == ['belt', 'lapel', 'sleeve']
+
+    def test_black_rounds_are_choke_and_lock(self):
+        rounds = [p for p in self._pieces_by_team('black') if p.shape == 'round']
+        names = sorted(p.name for p in rounds)
+        assert names == ['choke', 'lock']
+
+    def test_every_piece_has_a_name(self):
+        for y in range(10):
+            for x in range(4):
+                p = self.game.board.get_piece(y, x)
+                if p:
+                    assert p.name is not None, f"Piece at ({y},{x}) has no name"
+
+    def test_piece_names_survive_serialization_roundtrip(self):
+        restored = GameState.from_dict(self.game.to_dict())
+        for y in range(10):
+            for x in range(4):
+                orig = self.game.board.get_piece(y, x)
+                rest = restored.board.get_piece(y, x)
+                if orig:
+                    assert rest is not None
+                    assert rest.name == orig.name, f"Name mismatch at ({y},{x})"
+
+    def test_piece_name_travels_with_piece_after_move(self):
+        """Moving a piece must not lose or change its name."""
+        # White sleeve is at (4,0) in the default layout
+        sleeve = self.game.board.get_piece(4, 0)
+        assert sleeve is not None and sleeve.name == 'sleeve'
+
+        # Find a valid destination and move there
+        valid = self.game.board.get_valid_moves(4, 0)
+        assert valid, "Sleeve at (4,0) should have at least one valid move"
+        to_y, to_x = next(iter(valid))
+        success, _ = self.game.perform_move((4, 0), (to_y, to_x))
+        assert success
+
+        moved = self.game.board.get_piece(to_y, to_x)
+        assert moved is not None
+        assert moved.name == 'sleeve'

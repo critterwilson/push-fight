@@ -59,7 +59,11 @@ sessions = SessionManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Nothing to initialise at startup; RAG is lazy-loaded per session.
+    # Warm up the RAG engine in the background so it's ready before the first
+    # question arrives.  AIInterface is a singleton — the same instance is
+    # returned by every subsequent AIInterface() call.
+    from app.rag.ai_interface import AIInterface
+    AIInterface()
     yield
 
 
@@ -67,15 +71,16 @@ app = FastAPI(title="Push Fight API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tightened in production via UDS NetworkPolicy
+    # Allow the Vite dev server origin during development.
+    # For UDS/Production, restrict this regex to your specific domain (e.g. "https://.*\.uds\.dev")
+    # This is now handled by the Vite proxy for local development.
+    allow_origin_regex=".*",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve built React app when it exists (Phase 4)
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
-if os.path.isdir(_STATIC_DIR):
-    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
 
 
 # ---------------------------------------------------------------------------
@@ -348,17 +353,18 @@ async def ask_referee(session_id: str, body: AskRequest):
     """
     session = _get_session_or_404(session_id)
 
+    # Capture the running loop now (we're on it); the callback runs in a
+    # background thread where asyncio.get_event_loop() raises RuntimeError.
+    loop = asyncio.get_running_loop()
+
     def _callback(answer: str) -> None:
-        # Schedule the broadcast back on the event loop from the RAG thread
-        asyncio.get_event_loop().call_soon_threadsafe(
+        loop.call_soon_threadsafe(
             lambda: asyncio.create_task(
                 _broadcast(session_id, {"event": "rag_answer", "answer": answer})
             )
         )
 
-    # Lazy-import to avoid pulling heavy ML deps at startup
     from app.rag.ai_interface import AIInterface
-
     ai = AIInterface()
     ai.ask_question(session.game, body.question, _callback)
 
@@ -371,12 +377,11 @@ async def ask_referee(session_id: str, body: AskRequest):
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    await websocket.accept()
     session = sessions.get(session_id)
     if session is None:
         await websocket.close(code=4004)
         return
-
-    await websocket.accept()
     session.websockets.append(websocket)
 
     # Send the current state immediately on connect
@@ -394,3 +399,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     finally:
         if websocket in session.websockets:
             session.websockets.remove(websocket)
+
+
+# ---------------------------------------------------------------------------
+# Static files — mounted LAST so API routes take priority
+# ---------------------------------------------------------------------------
+
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")

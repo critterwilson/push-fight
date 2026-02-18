@@ -84,26 +84,29 @@ class PushFightRAG:
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         llm = ChatOllama(model=self.model_name, base_url=ollama_host)
 
-        # The Prompt: Combines Rules (Context), Game State, and Question
-        template = """You are the official AI Referee for the board game Push Fight.
+        # The Prompt: Separating System (Instructions) from Human (Context + Question)
+        system_template = """You are the official AI Referee for the board game Push Fight.
         Your job is to enforce the rules strictly and explain strategic possibilities based on the current board state.
         
-        ### Official Rules Context:
+        Instructions:
+        1. Answer based ONLY on the provided rules and game state.
+        2. If a move is illegal, cite the specific rule section (e.g., "Section 3: Movement Restrictions").
+        3. Be concise and authoritative. Prefer brief bullet points over long paragraphs.
+        4. For lists, use markdown bullet points (e.g., `- Item 1`) and ensure each item is on a new line."""
+
+        human_template = """### Official Rules Context:
         {context}
         
         ### Current Game State:
         {game_state}
         
         ### User Question: 
-        {question}
+        {question}"""
         
-        ### Instructions:
-        1. Answer based ONLY on the provided rules and game state.
-        2. If a move is illegal, cite the specific rule section (e.g., "Section 3: Movement Restrictions").
-        3. Be concise and authoritative.
-        """
-        
-        prompt = ChatPromptTemplate.from_template(template)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_template),
+            ("human", human_template),
+        ])
 
         def format_docs(docs):
             return "\n\n".join(doc.page_content for doc in docs)
