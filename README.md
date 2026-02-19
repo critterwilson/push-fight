@@ -8,12 +8,11 @@ A digital adaptation of [Push Fight](https://pushfightgame.com/) — a 2-player 
 
 Chess gets recommended constantly as a thinking game for BJJ players. The problem is that chess rewards material accumulation and positional dominance over time — it doesn't map well to the way grappling actually works.
 
-# TODO: fill this out
-In BJJ, position is temporary. Control is always contested. The moment you commit to a move, your opponent is already adjusting. You're not trying to collect pieces; you're trying to force someone off a stable position until they fall off the edge. The game ends when someone gets pushed out, not captured.
+In 2015, I stumbled accross a game called "Push Fight". It was a small one-man shop producing the games (I can't find them anymore), but it was the closest I could get to BJJ with my limited funds at the time. This game became one of my favorites and I always wanted to build a digital version of it. 
 
-Push Fight captures that feeling better than chess does. There's no material economy. Every piece matters. Position is everything, and the board is small enough that a single push can end the game. I built this as an experiment to see if a board game could actually replicate the strategic logic of BJJ — the pressure game, the scrambles, the importance of the anchor.
+In BJJ, position is temporary. Control is always contested. The moment you commit to a move, your opponent is already adjusting. Push Fight captures that feeling better than chess does. There's no material economy. Every piece matters. Position is everything, and the board is small enough that a single push can end the game. 
 
-The BJJ piece names (sleeve, lapel, belt, neck, joint) are a nod to the grips and positions that give control in grappling. Square pieces are the active grips that can do work; round pieces are the submissions — lose one and the match is over instantly.
+I decided to add BJJ piece names (sleeve, lapel, belt, neck, joint) as a nod to the grips and positions that give control in grappling. Square pieces are the active grips that can do work; round pieces are the vital parts that one needs to protect—lose one and the match is over instantly.
 
 ---
 
