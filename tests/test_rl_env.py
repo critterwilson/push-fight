@@ -12,8 +12,18 @@ from app.engine.board import PushFightBoard
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _setup_env_in_setup_mode():
+    """Return an env manually placed into setup mode (for testing setup logic)."""
+    env = PushFightEnv()
+    env.reset()
+    env.game = GameState.create_custom_game()
+    env.current_phase = 'setup'
+    env.step_count = 0
+    return env
+
+
 def _complete_setup(env):
-    """Step the env through the full setup phase using valid placements."""
+    """Step the env through a full setup phase using valid placements."""
     assert env.current_phase == 'setup', "Expected env to be in setup phase"
     for _ in range(10):  # 5 white + 5 black pieces
         if env.current_phase != 'setup':
@@ -41,37 +51,24 @@ class TestObservation:
         assert np.all(obs >= 0.0)
         assert np.all(obs <= 1.0)
 
-    def test_observation_includes_phase_scalars_at_reset(self):
-        """At reset (setup phase): is_push_phase=0, moves_remaining=0, is_white_turn=1,
-        is_setup_phase=1, pieces_placed_fraction=0."""
+    def test_observation_scalars_at_reset(self):
+        """At reset (move phase, white to move, 2 rounds each side):
+        is_push_phase=0, moves_remaining=1.0, is_white_turn=1,
+        own_rounds=1.0, opp_rounds=1.0."""
         env = PushFightEnv()
         obs, info = env.reset()
         assert obs[200] == 0.0   # is_push_phase — not in push phase
-        assert obs[201] == 0.0   # moves_remaining — 0 during setup
-        assert obs[202] == 1.0   # is_white_turn — white starts setup
-        assert obs[203] == 1.0   # is_setup_phase
-        assert obs[204] == 0.0   # pieces_placed_fraction — nothing placed yet
-
-    def test_observation_scalars_after_setup(self):
-        """After setup completes, is_setup_phase=0, moves_remaining=1.0."""
-        env = PushFightEnv()
-        env.reset()
-        _complete_setup(env)
-        obs = env._get_observation()
-        assert obs[200] == 0.0   # is_push_phase — move phase
-        assert obs[201] == 1.0   # moves_remaining — 2/2
-        assert obs[203] == 0.0   # is_setup_phase — game started
-        assert obs[204] == 1.0   # pieces_placed_fraction — all placed
+        assert obs[201] == 1.0   # moves_remaining — 2 moves available (2/2)
+        assert obs[202] == 1.0   # is_white_turn — white starts
+        assert obs[203] == 1.0   # own_rounds — 2 round pieces alive (2/2)
+        assert obs[204] == 1.0   # opp_rounds — 2 round pieces alive (2/2)
 
     def test_observation_is_mine_perspective(self):
         """is_mine feature should reflect current player's perspective."""
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
-
-        # After setup, manually verify is_mine for whatever pieces are on the board
         obs = env._get_observation()
-        # White's turn: check that at least one white piece has is_mine=1.0
+        # White's turn: white pieces should have is_mine=1.0
         found_mine = False
         for y in range(10):
             for x in range(4):
@@ -81,6 +78,24 @@ class TestObservation:
                     if obs[cell_start + 1] == 1.0:
                         found_mine = True
         assert found_mine, "White pieces should have is_mine=1.0 on white's turn"
+
+    def test_observation_rounds_drop_when_piece_pushed_off(self):
+        """own_rounds (obs[203]) decreases when a round piece is pushed off."""
+        env = PushFightEnv()
+        env.reset()
+        obs_before = env._get_observation()
+        assert obs_before[204] == 1.0  # opp_rounds starts at 1.0
+
+        # Manually remove one of black's round pieces to simulate a push-off
+        for y in range(10):
+            for x in range(4):
+                piece = env.game.board.get_piece(y, x)
+                if piece and piece != "OUT_OF_BOUNDS" and piece.team == 'black' and piece.shape == 'round':
+                    env.game.board.pieces[y][x] = None
+                    break
+
+        obs_after = env._get_observation()
+        assert obs_after[204] == 0.5  # opp_rounds should now be 0.5 (1/2)
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +120,6 @@ class TestActionMasking:
         """In move phase, only move actions (0–1599) should be valid."""
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
         assert env.current_phase == 'move'
         mask = env.action_masks()
         assert not np.any(mask[1600:]), "Push/place actions shouldn't be valid during move phase"
@@ -114,7 +128,6 @@ class TestActionMasking:
         """In push phase, only push actions (1600–1759) should be valid."""
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
         env.current_phase = 'push'
         env.game.moves_made = 2
         mask = env.action_masks()
@@ -124,19 +137,13 @@ class TestActionMasking:
 
 
 # ---------------------------------------------------------------------------
-# Setup phase
+# Setup phase (tested by manually entering setup mode)
 # ---------------------------------------------------------------------------
 
 class TestSetupPhase:
-    def test_setup_phase_at_reset(self):
-        env = PushFightEnv()
-        env.reset()
-        assert env.current_phase == 'setup'
-
     def test_setup_action_masks_only_placement_range(self):
         """During setup, only placement actions (1760–1799) should be valid."""
-        env = PushFightEnv()
-        env.reset()
+        env = _setup_env_in_setup_mode()
         assert env.current_phase == 'setup'
         mask = env.action_masks()
         assert not np.any(mask[:1760]), "Move/push actions should not be valid during setup"
@@ -144,11 +151,9 @@ class TestSetupPhase:
 
     def test_setup_masks_own_side_only_white(self):
         """White cannot place on black's rows (5–9)."""
-        env = PushFightEnv()
-        env.reset()
+        env = _setup_env_in_setup_mode()
         assert env.game.current_player == 'white'
         mask = env.action_masks()
-        # Black's rows are 5–9: placement indices 1760 + y*4 + x for y in 5..9
         for y in range(5, 10):
             for x in range(4):
                 idx = 1760 + y * 4 + x
@@ -156,18 +161,14 @@ class TestSetupPhase:
 
     def test_setup_masks_kill_zones_excluded(self):
         """Kill zone cells should never be valid placements."""
-        env = PushFightEnv()
-        env.reset()
+        env = _setup_env_in_setup_mode()
         mask = env.action_masks()
-        # Row 0, col 0 is always a kill zone
         kill_zone_idx = 1760 + 0 * 4 + 0
         assert not mask[kill_zone_idx], "Kill zone should not be a valid placement"
 
     def test_setup_step_places_piece_on_board(self):
         """Taking a placement step adds a piece to the board."""
-        env = PushFightEnv()
-        env.reset()
-        # Count pieces before
+        env = _setup_env_in_setup_mode()
         before = sum(
             1 for y in range(10) for x in range(4)
             if env.game.board.get_piece(y, x)
@@ -183,16 +184,14 @@ class TestSetupPhase:
 
     def test_setup_completes_after_10_placements(self):
         """After 10 placement steps (5 per team), phase transitions to 'move'."""
-        env = PushFightEnv()
-        env.reset()
+        env = _setup_env_in_setup_mode()
         _complete_setup(env)
         assert env.current_phase == 'move'
         assert not env.game.setup_mode
 
     def test_setup_placement_reward_positive(self):
         """Valid placement step should yield non-negative reward."""
-        env = PushFightEnv()
-        env.reset()
+        env = _setup_env_in_setup_mode()
         mask = env.action_masks()
         valid = np.where(mask)[0]
         _, reward, _, _, info = env.step(valid[0])
@@ -201,14 +200,9 @@ class TestSetupPhase:
 
     def test_setup_center_placement_gives_higher_reward(self):
         """Center-column placements should yield more reward than corner placements."""
-        env = PushFightEnv()
-        env.reset()
-        # Try to place at x=1 (center) vs x=0 (edge), both on white's side, non-kill-zone
-        # Row 4, col 1 — center (valid for white)
-        center_action = 1760 + 4 * 4 + 1
-        env2 = PushFightEnv()
-        env2.reset()
-        env2.game.current_player = 'white'
+        env = _setup_env_in_setup_mode()
+        center_action = 1760 + 4 * 4 + 1  # Row 4, col 1 — center column
+        env2 = _setup_env_in_setup_mode()
         corner_action = 1760 + 4 * 4 + 0  # Row 4, col 0
 
         if env.action_masks()[center_action] and env2.action_masks()[corner_action]:
@@ -218,8 +212,7 @@ class TestSetupPhase:
 
     def test_setup_switches_to_opponent_after_team_completes(self):
         """After white places 5 pieces, current_player should switch to black."""
-        env = PushFightEnv()
-        env.reset()
+        env = _setup_env_in_setup_mode()
         assert env.game.current_player == 'white'
         for _ in range(5):
             mask = env.action_masks()
@@ -232,14 +225,13 @@ class TestSetupPhase:
 
 
 # ---------------------------------------------------------------------------
-# Step: move phase (requires completing setup first)
+# Step: move phase
 # ---------------------------------------------------------------------------
 
 class TestStepMovePhase:
     def test_valid_move(self):
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
         valid_actions = env._get_valid_actions()
         assert len(valid_actions) > 0
 
@@ -252,7 +244,6 @@ class TestStepMovePhase:
     def test_invalid_move_gets_substituted(self):
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
         # Action 0 is almost certainly invalid during move phase (no piece at 0,0)
         obs, reward, terminated, truncated, info = env.step(0)
         assert reward < 0.01  # Should have -0.05 penalty
@@ -324,6 +315,29 @@ class TestStepPushPhase:
         assert env.game.winner == 'white'
         assert reward == 1.0
 
+    def test_push_round_threat_bonus(self):
+        """Pushing an opponent round piece to edge_dist ≤ 1 earns ROUND_THREAT_REWARD."""
+        from app.rl.env import ROUND_THREAT_REWARD
+        env = PushFightEnv()
+        env.reset()
+
+        # White square at (6,1), black round at (7,1) — pushing down moves black round to (8,1)
+        # _edge_dist(8,1) = min(8, 1, 1, 2) = 1  → threat bonus should apply
+        board = PushFightBoard()
+        board.pieces[6][1] = Piece('white', 'square')
+        board.pieces[7][1] = Piece('black', 'round')
+        env.game = GameState(board)
+        env.current_phase = 'push'
+        env.game.moves_made = 2
+
+        action = 1600 + 6 * 16 + 1 * 4 + 1  # push down
+        _, reward, terminated, truncated, _ = env.step(action)
+
+        assert not terminated, "Black round piece should still be on board at (8,1)"
+        assert reward >= ROUND_THREAT_REWARD, (
+            f"Expected round threat bonus ≥ {ROUND_THREAT_REWARD}, got {reward}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Full episode
@@ -337,7 +351,7 @@ class TestFullEpisode:
         total_reward = 0.0
         steps = 0
 
-        while steps < 600:  # Extra budget for 10-step setup
+        while steps < 500:
             mask = env.action_masks()
             valid_actions = np.where(mask)[0]
             if len(valid_actions) == 0:
@@ -358,7 +372,7 @@ class TestFullEpisode:
         done = False
         steps = 0
 
-        while not done and steps < 1100:
+        while not done and steps < 500:
             mask = env.action_masks()
             valid_actions = np.where(mask)[0]
             if len(valid_actions) == 0:
@@ -368,7 +382,7 @@ class TestFullEpisode:
             done = terminated or truncated
             steps += 1
 
-        assert done, f"Episode should terminate within 1100 steps, got {steps}"
+        assert done, f"Episode should terminate within 500 steps, got {steps}"
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +436,6 @@ class TestDecodeAction:
     def test_decode_move_action(self):
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
         action = 4 * 160 + 0 * 40 + 3 * 4 + 0
         phase, data = env._decode_action(action)
         assert phase == 'move'
@@ -431,7 +444,6 @@ class TestDecodeAction:
     def test_decode_push_action(self):
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
         env.current_phase = 'push'
         env.game.moves_made = 2
         action = 1600 + 4 * 16 + 0 * 4 + 1
@@ -440,8 +452,7 @@ class TestDecodeAction:
         assert data == (4, 0, (1, 0))
 
     def test_decode_setup_action(self):
-        env = PushFightEnv()
-        env.reset()
+        env = _setup_env_in_setup_mode()
         # Place at row 4, col 2 → 1760 + 4*4 + 2 = 1778
         action = 1760 + 4 * 4 + 2
         phase, data = env._decode_action(action)
@@ -451,8 +462,7 @@ class TestDecodeAction:
     def test_decode_invalid_returns_none(self):
         env = PushFightEnv()
         env.reset()
-        _complete_setup(env)
-        # Push action during move phase
+        # Push action during move phase should return None
         phase, data = env._decode_action(1700)
         assert phase is None
 
@@ -463,21 +473,9 @@ class TestDecodeAction:
 
 class TestIsValidPush:
     def _env_with_pieces(self):
-        """Return an env with a standard board bypassing setup."""
+        """Return an env with the standard starting position in push phase."""
         env = PushFightEnv()
         env.reset()
-        board = PushFightBoard()
-        board.pieces[4][0] = Piece('white', 'square', name='sleeve')
-        board.pieces[4][1] = Piece('white', 'square', name='lapel')
-        board.pieces[4][2] = Piece('white', 'square', name='belt')
-        board.pieces[4][3] = Piece('white', 'round',  name='neck')
-        board.pieces[3][1] = Piece('white', 'round',  name='joint')
-        board.pieces[5][0] = Piece('black', 'square', name='sleeve')
-        board.pieces[5][1] = Piece('black', 'square', name='lapel')
-        board.pieces[5][2] = Piece('black', 'square', name='belt')
-        board.pieces[5][3] = Piece('black', 'round',  name='neck')
-        board.pieces[6][1] = Piece('black', 'round',  name='joint')
-        env.game = GameState(board)
         env.current_phase = 'push'
         env.game.moves_made = 2
         return env

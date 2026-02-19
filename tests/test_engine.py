@@ -465,7 +465,7 @@ class TestPushMechanics:
         assert game.board.anchor_pos == (6, 1)
 
     def test_anchor_blocks_push_chain(self):
-        """Anchor in a push chain prevents pieces at and behind it from moving."""
+        """Anchor in a push chain blocks the entire push — nothing moves."""
         board = PushFightBoard()
         board.pieces[4][1] = Piece('white', 'square')
         board.pieces[5][1] = Piece('black', 'square')
@@ -475,26 +475,18 @@ class TestPushMechanics:
         game = GameState(board)
 
         result = game.perform_push(4, 1, (1, 0))  # Push down
-        # The anchor at (5,1) means piece at index 1 (5,1) doesn't move
-        # Piece at index 0 (4,1) is before anchor - also shouldn't move (index <= anchor_index)
-        # The round at (6,1) is at index 2, after anchor_index=1, so it should be pushed
-        # Wait - actually the code says "if anchor_in_chain and i <= anchor_index: continue"
-        # chain = [(4,1), (5,1), (6,1)], anchor at (5,1) is index 1
-        # i=2 (6,1): i > anchor_index, tries to move to (7,1) but checks if (7,1) == anchor_pos? No.
-        #   But (6,1) also checks if destination is occupied - (7,1) is empty, so it moves.
-        # i=1 (5,1): i <= anchor_index, SKIP
-        # i=0 (4,1): i <= anchor_index, SKIP
-        # So: (4,1) stays, (5,1) stays (anchored), (6,1) tries to move to (7,1)
-        # But wait - destination check: board.pieces[7][1] should be None after (6,1) moves there.
-        # Actually (6,1) can't move because the new position check says pieces[new_y][new_x] is not None?
-        # No, (7,1) is empty, so (6,1) round moves to (7,1).
+        # Anchor at (5,1) blocks the entire chain — no pieces move
+        assert result is True  # Push still counts as an action
 
-        # Let's verify: (4,1) should still have white square
+        # (4,1) should still have white square (didn't move)
         assert game.board.get_piece(4, 1) is not None
         assert game.board.get_piece(4, 1).team == 'white'
         # (5,1) should still have black square (anchored)
         assert game.board.get_piece(5, 1) is not None
         assert game.board.get_piece(5, 1).team == 'black'
+        # (6,1) should still have black round (blocked by anchor)
+        assert game.board.get_piece(6, 1) is not None
+        assert game.board.get_piece(6, 1).shape == 'round'
 
     def test_push_sets_push_completed(self):
         """A successful push sets push_completed to True."""
@@ -798,8 +790,8 @@ class TestEdgeCases:
         # Can push right (3,1 is empty), up (2,0 is empty), down (4,0 is empty)
         assert game.has_legal_push() is True
 
-    def test_push_does_not_move_pieces_into_occupied_space(self):
-        """If chain processing encounters occupied destination, piece stays."""
+    def test_push_does_not_move_pieces_past_anchor(self):
+        """Anchor blocks the entire push — no pieces move, including downstream."""
         board = PushFightBoard()
         board.pieces[4][1] = Piece('white', 'square')
         board.pieces[5][1] = Piece('black', 'square')
@@ -807,16 +799,12 @@ class TestEdgeCases:
         board.anchor_pos = (5, 1)  # Anchor on middle piece
         game = GameState(board)
 
-        # Push down: anchor at (5,1) blocks pieces at index <= anchor_index
-        # chain = [(4,1), (5,1), (6,1)], anchor at index 1
-        # (6,1) at index 2 tries to move to (7,1) - should succeed
-        # (5,1) at index 1 - anchored, skip
-        # (4,1) at index 0 - before anchor, skip
+        # Push down: anchor at (5,1) blocks entire chain
         game.perform_push(4, 1, (1, 0))
-        # (4,1) should still be occupied (white square didn't move)
-        assert game.board.get_piece(4, 1) is not None
-        # (5,1) should still be occupied (anchored)
-        assert game.board.get_piece(5, 1) is not None
+        # All pieces stay in place
+        assert game.board.get_piece(4, 1) is not None  # white square
+        assert game.board.get_piece(5, 1) is not None  # black square (anchored)
+        assert game.board.get_piece(6, 1) is not None  # black round (blocked)
 
     def test_multiple_pieces_pushed_off_same_push(self):
         """A long chain could push multiple pieces off in theory.

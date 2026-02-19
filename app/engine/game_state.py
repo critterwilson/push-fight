@@ -168,60 +168,35 @@ class GameState:
                     break
 
         # 5. Execution: Shift pieces in reverse order to avoid overwriting
-        # If anchor is in chain, pieces before anchor can move, but anchor and pieces after it cannot
+        # If anchor is in chain, the entire push is blocked — nothing moves
         pieces_moved = False
-        
-        # Find anchor position in chain to determine what can move
-        anchor_index = -1
-        if anchor_in_chain:
-            for i, pos in enumerate(chain):
-                if pos == self.board.anchor_pos:
-                    anchor_index = i
-                    break
-        
+
         # Track pieces pushed into kill zone (multiple pieces can be pushed at once)
         pieces_pushed_off = []  # List of (piece, team) tuples
-        
-        # Move pieces in reverse order (from end of chain to start)
-        for i in range(len(chain) - 1, -1, -1):
-            pos = chain[i]
-            curr_y, curr_x = pos
-            
-            # If anchor is in chain, don't move anchor or any pieces after it (earlier in chain)
-            if anchor_in_chain and i <= anchor_index:
-                # This is the anchor or a piece after it - don't move
-                continue
-            
-            new_y, new_x = curr_y + dy, curr_x + dx
-            
-            # Safety check: don't move if destination would be the anchor position
-            if self.board.anchor_pos[0] is not None and (new_y, new_x) == self.board.anchor_pos:
-                # Can't move into anchor position - this piece is blocked by anchor
-                # Don't clear the piece's current position - it stays where it is
-                continue
-            
-            moving_piece = self.board.pieces[curr_y][curr_x]
-            if moving_piece is None:
-                # Piece already moved or doesn't exist - skip
-                continue
-            
-            # Check if destination is already occupied (shouldn't happen in normal flow, but safety check)
-            if self.board.pieces[new_y][new_x] is not None:
-                # Destination occupied - can't move here, don't clear current position
-                continue
-            
-            # Check if destination is kill zone - ALLOW it! (this is how you win)
-            if self.board.is_kill_zone(new_y, new_x):
-                # Piece is pushed into kill zone - remove it from board
-                self.board.pieces[curr_y][curr_x] = None  # Clear old spot
-                pieces_pushed_off.append((moving_piece, moving_piece.team))
-                pieces_moved = True
-                # Don't place piece in kill zone - it's removed from play
-            else:
-                # Normal move - place piece at destination
-                self.board.pieces[curr_y][curr_x] = None  # Clear old spot
-                self.board.pieces[new_y][new_x] = moving_piece
-                pieces_moved = True
+
+        if not anchor_in_chain:
+            # Normal push — move all pieces in reverse order (from end of chain to start)
+            for i in range(len(chain) - 1, -1, -1):
+                pos = chain[i]
+                curr_y, curr_x = pos
+
+                new_y, new_x = curr_y + dy, curr_x + dx
+
+                moving_piece = self.board.pieces[curr_y][curr_x]
+                if moving_piece is None:
+                    continue
+
+                # Check if destination is kill zone - ALLOW it! (this is how you win)
+                if self.board.is_kill_zone(new_y, new_x):
+                    # Piece is pushed into kill zone - remove it from board
+                    self.board.pieces[curr_y][curr_x] = None
+                    pieces_pushed_off.append((moving_piece, moving_piece.team))
+                    pieces_moved = True
+                else:
+                    # Normal move - place piece at destination
+                    self.board.pieces[curr_y][curr_x] = None
+                    self.board.pieces[new_y][new_x] = moving_piece
+                    pieces_moved = True
         
         # Log the push action
         self.log_action('push', piece=(y, x), direction=direction)

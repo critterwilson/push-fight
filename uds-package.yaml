@@ -14,18 +14,19 @@ metadata:
   name: push-fight
   namespace: push-fight
 spec:
-  # ── External exposure ──────────────────────────────────────────────────────
-  expose:
-    - service: push-fight-app
-      selector:
-        app: push-fight-app
-      host: push-fight        # resolves to push-fight.<domain> via UDS Core DNS
-      gateway: tenant
-      port: 8000
-      targetPort: 8000
-
-  # ── Network allow rules (UDS → Cilium / K8s NetworkPolicies) ──────────────
+  # ── Network configuration ───────────────────────────────────────────────────
   network:
+    # ── External exposure ──────────────────────────────────────────────────────
+    expose:
+      - service: push-fight-app
+        selector:
+          app: push-fight-app
+        host: push-fight        # resolves to push-fight.<domain> via UDS Core DNS
+        gateway: tenant
+        port: 8000
+        targetPort: 8000
+
+    # ── Network allow rules (UDS → Cilium / K8s NetworkPolicies) ──────────────
     allow:
       # Ingress: Istio tenant gateway → app
       - direction: Ingress
@@ -47,6 +48,16 @@ spec:
         port: 8000
         description: "Push Fight app to ChromaDB"
 
+      # Ingress: app → ChromaDB
+      - direction: Ingress
+        selector:
+          app: chromadb
+        remoteNamespace: push-fight
+        remoteSelector:
+          app: push-fight-app
+        port: 8000
+        description: "ChromaDB accepts traffic from app"
+
       # Egress: app → Ollama (LLM inference for RAG)
       - direction: Egress
         selector:
@@ -56,6 +67,34 @@ spec:
           app: ollama
         port: 11434
         description: "Push Fight app to Ollama"
+
+      # Ingress: app → Ollama
+      - direction: Ingress
+        selector:
+          app: ollama
+        remoteNamespace: push-fight
+        remoteSelector:
+          app: push-fight-app
+        port: 11434
+        description: "Ollama accepts traffic from app"
+
+      # Egress: Ollama → internet (model registry pulls)
+      - direction: Egress
+        selector:
+          app: ollama
+        ports:
+          - 443
+          - 80
+        remoteGenerated: Anywhere
+        description: "Ollama pulls models from registry.ollama.ai"
+
+      # Egress: all pods → Istio control plane (sidecar xDS + certs)
+      - direction: Egress
+        remoteNamespace: istio-system
+        remoteSelector:
+          app: istiod
+        port: 15012
+        description: "Sidecar to istiod xDS/cert signing"
 
       # Egress: DNS resolution via kube-dns
       - direction: Egress

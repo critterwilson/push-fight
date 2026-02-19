@@ -9,16 +9,26 @@ components:
     required: true
     manifests:
       - name: k8s-resources
+        noWait: true
         files:
           - deployment.yaml
-          - network-policies.yaml
           - uds-package.yaml
     images:
       - "push-fight-app:latest"
       - "chromadb/chroma:latest"
       - "ollama/ollama:latest"
+    dataInjections:
+      - source: ollama-models
+        target:
+          namespace: push-fight
+          selector: app=ollama
+          container: ollama
+          path: /root/.ollama/models
+        compress: true
     actions:
       onDeploy:
+        defaults:
+          maxTotalSeconds: 600
         after:
           - wait:
               cluster:
@@ -32,10 +42,6 @@ components:
                 name: ollama
                 namespace: push-fight
                 condition: available
-          - cmd: "kubectl exec -n push-fight deploy/ollama -- ollama pull llama3"
-            description: "Pull Llama3 model for RAG referee"
-          - cmd: "kubectl exec -n push-fight deploy/ollama -- ollama pull nomic-embed-text"
-            description: "Pull embedding model for RAG referee"
           - wait:
               cluster:
                 kind: deployment

@@ -14,8 +14,11 @@ PIECE_ROSTER = [
 ]
 
 # Scale for per-step edge-proximity reward shaping.
-# Kept small so win/loss signals (±1.0) still dominate.
-EDGE_REWARD_SCALE = 0.005
+EDGE_REWARD_SCALE = 0.02
+
+# One-time bonus per opponent round piece found at edge_dist ≤ 1 after a push.
+# Round pieces are instant-loss targets; this rewards setting them up to be knocked off.
+ROUND_THREAT_REWARD = 0.1
 
 
 def _edge_dist(row, col):
@@ -92,21 +95,18 @@ class PushFightEnv(gym.Env):
 
         # Scalar features
         is_push_phase = 1.0 if self.current_phase == 'push' else 0.0
-        moves_remaining = (2 - self.game.moves_made) / 2.0 if self.current_phase != 'setup' else 0.0
+        moves_remaining = (2 - self.game.moves_made) / 2.0
         is_white_turn = 1.0 if current_player == 'white' else 0.0
-        is_setup_phase = 1.0 if self.current_phase == 'setup' else 0.0
 
-        # Fraction of pieces placed by current player (0.0–1.0)
-        if self.current_phase == 'setup':
-            status = self.game.get_placement_status(current_player)
-            placed = status['squares'] + status['rounds']
-        else:
-            placed = 5  # All placed once game started
-        pieces_placed_fraction = placed / 5.0
+        # Round piece survival (0.0, 0.5, or 1.0 each).  Losing a round piece is an
+        # instant loss, so these are the most win-condition-relevant scalars.
+        opponent = 'black' if current_player == 'white' else 'white'
+        own_rounds = self.game.count_round_pieces(current_player) / 2.0
+        opp_rounds = self.game.count_round_pieces(opponent) / 2.0
 
         return np.concatenate([
             flat_board,
-            [is_push_phase, moves_remaining, is_white_turn, is_setup_phase, pieces_placed_fraction],
+            [is_push_phase, moves_remaining, is_white_turn, own_rounds, opp_rounds],
         ]).astype(np.float32)
 
     # -------------------------------------------------------------------------
@@ -288,8 +288,11 @@ class PushFightEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        self.game = GameState.create_custom_game()
-        self.current_phase = 'setup'
+        # Use the fixed standard starting position so training focuses entirely on
+        # gameplay, not piece placement.  The server handles setup separately via
+        # _auto_place(); agent.get_action() returns None during setup mode anyway.
+        self.game = GameState.create_initial_game()
+        self.current_phase = 'move'
         self.step_count = 0
 
         observation = self._get_observation()
@@ -435,6 +438,16 @@ class PushFightEnv(gym.Env):
                 opp_dist_after = self._min_kill_zone_distance(opponent)
                 if opp_dist_after < opp_dist_before:
                     reward += 0.05  # Pushed opponent closer to danger
+
+                # Bonus for each opponent round piece now sitting at edge_dist ≤ 1
+                # (one push away from the kill zone — an immediate threat).
+                for y in range(10):
+                    for x in range(4):
+                        piece = self.game.board.get_piece(y, x)
+                        if (piece and piece != "OUT_OF_BOUNDS" and
+                                piece.team == opponent and piece.shape == 'round' and
+                                _edge_dist(y, x) <= 1):
+                            reward += ROUND_THREAT_REWARD
 
                 # Edge proximity reward before switching turns (current_player still = pusher)
                 reward += self._edge_proximity_reward()
@@ -607,19 +620,35 @@ class SelfPlayEnv(PushFightEnv):
         return int(np.random.choice(valid))
 
     def _reload_opponent(self):
-        """Load a random snapshot from the pool directory."""
+        """Load a snapshot from the pool directory, weighted toward recent ones.
+
+        Uniform sampling would mean the agent spends most episodes against its
+        earliest (weakest) self.  Linear weighting toward the most recent snapshot
+        ensures the curriculum keeps up with the improving policy.
+        """
         if not os.path.isdir(self.pool_dir):
             self.opponent_model = None
             return
 
-        snapshots = [
-            f for f in os.listdir(self.pool_dir) if f.endswith('.zip')
-        ]
+        snapshots = [f for f in os.listdir(self.pool_dir) if f.endswith('.zip')]
         if not snapshots or np.random.random() < self.p_random:
             self.opponent_model = None
             return
 
-        snapshot = np.random.choice(snapshots)
+        # Sort by the step number embedded in the filename (snapshot_NNNNN.zip).
+        def _step_num(fname):
+            try:
+                return int(fname.replace('snapshot_', '').replace('.zip', ''))
+            except ValueError:
+                return 0
+
+        snapshots_sorted = sorted(snapshots, key=_step_num)
+        n = len(snapshots_sorted)
+        # Linear weights: oldest gets weight 1, most recent gets weight n.
+        weights = np.arange(1, n + 1, dtype=float)
+        weights /= weights.sum()
+        snapshot = np.random.choice(snapshots_sorted, p=weights)
+
         path = os.path.join(self.pool_dir, snapshot)
         try:
             from sb3_contrib import MaskablePPO

@@ -1,0 +1,13 @@
+{
+  "difficulty": "easy",
+  "timesteps_trained": 1000000,
+  "p_random_training": 0.4,
+  "vs_random": {
+    "n_episodes": 200,
+    "win_rate": 0.98,
+    "avg_reward": 8.7248,
+    "avg_episode_length": 140.66
+  },
+  "vs_previous_tier": null,
+  "saved_at": "2026-02-19T00:41:29.376229+00:00"
+}

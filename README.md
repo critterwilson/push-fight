@@ -8,6 +8,7 @@ A digital adaptation of [Push Fight](https://pushfightgame.com/) — a 2-player 
 
 Chess gets recommended constantly as a thinking game for BJJ players. The problem is that chess rewards material accumulation and positional dominance over time — it doesn't map well to the way grappling actually works.
 
+# TODO: fill this out
 In BJJ, position is temporary. Control is always contested. The moment you commit to a move, your opponent is already adjusting. You're not trying to collect pieces; you're trying to force someone off a stable position until they fall off the edge. The game ends when someone gets pushed out, not captured.
 
 Push Fight captures that feeling better than chess does. There's no material economy. Every piece matters. Position is everything, and the board is small enough that a single push can end the game. I built this as an experiment to see if a board game could actually replicate the strategic logic of BJJ — the pressure game, the scrambles, the importance of the anchor.
@@ -18,14 +19,14 @@ The BJJ piece names (sleeve, lapel, belt, neck, joint) are a nod to the grips an
 
 ## The Game
 
-Push Fight is played on an irregular 10×4 board with kill zones at each end. Each player has **5 pieces**: 3 squares (pushers) and 2 rounds (blockers).
+Push Fight is played on an irregular 10×4 board with kill zones at each end. Each player has **5 pieces**: 3 squares (attacks) and 2 rounds (vitals).
 
 ### Turn Structure
 
 1. **Move phase** (optional): slide 0–2 of your pieces any number of squares orthogonally
 2. **Push phase** (mandatory): push with one square piece — all pieces in the chain shift one square in the push direction
 
-After pushing, an **anchor** is placed on the pushing piece, preventing the opponent from moving or pushing it next turn.
+After pushing, an **anchor** is placed on the pushing piece, preventing the opponent from moving or pushing it or anything that in supports in a chain on the next turn.
 
 ### Pieces
 
@@ -49,10 +50,10 @@ Columns A–D run top→bottom (4 rows). Rows 1–10 run left→right (10 column
 
 ```
    1   2   3   4   5 | 6   7   8   9  10
-A  .   .   .   W   . | B   .   .   .   .
-B  .   .   W   W   . | B   B   .   .   .
-C  .   .   .   W   . | B   .   .   .   .
-D  .   .   .   W   . | B   .   .   .   .
+A  X   X   .   .   W | B   .   X   X   X
+B  X   .   .   W   W | B   B   .   .   X
+C  X   .   .   .   W | B   .   .   .   X
+D  X   X   X   .   W | B   .   .   X   X
                   ↑ centre line (dashed)
 ```
 
@@ -156,8 +157,8 @@ uv run python -m app.pygame_ui.main
 Toggle the microphone with the **Mic On/Off** button (supported browsers only). Commands:
 
 ```
-"sleeve to b4"      — move your Sleeve to column B, row 4
-"lapel push down"   — push with Lapel toward row 10
+"sleeve to b4"      — move your Sleeve to row B, column 4
+"lapel push down"   — push with Lapel toward column 10
 "skip"              — end move phase and go to push
 ```
 
@@ -178,6 +179,7 @@ The app is packaged with [Zarf](https://zarf.dev) and deployed via a [UDS Bundle
 ```bash
 docker build -t push-fight-app:latest .
 zarf package create .
+uds create .
 uds deploy uds-bundle.yaml
 ```
 

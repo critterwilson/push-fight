@@ -39,9 +39,9 @@ from app.rl.env import PushFightEnv, SelfPlayEnv
 # ---------------------------------------------------------------------------
 
 DIFFICULTY_PRESETS = {
-    "easy":   dict(timesteps=500_000,   p_random=0.5,  save_path="models/easy"),
-    "medium": dict(timesteps=1_000_000, p_random=0.2,  save_path="models/medium"),
-    "hard":   dict(timesteps=2_000_000, p_random=0.05, save_path="models/hard"),
+    "easy":   dict(timesteps=1_000_000,  p_random=0.4,  save_path="models/easy"),
+    "medium": dict(timesteps=5_000_000,  p_random=0.1,  save_path="models/medium"),
+    "hard":   dict(timesteps=10_000_000, p_random=0.02, save_path="models/hard"),
 }
 
 PREVIOUS_TIER = {
@@ -248,7 +248,9 @@ def train(
     use_selfplay: bool = True,
     pool_dir: str = 'models/pool',
     p_random: float = 0.2,
+    save_snapshots: bool = True,
     snapshot_interval: int = 50_000,
+    save_checkpoints: bool = True,
     checkpoint_interval: int = 100_000,
     verbose: int = 1,
     device: str = 'auto',
@@ -267,7 +269,9 @@ def train(
     use_selfplay:         If True, use SelfPlayEnv with snapshot pool.
     pool_dir:             Directory for opponent snapshots.
     p_random:             Probability opponent plays randomly each episode.
+    save_snapshots:       If True, save self-play snapshots to pool directory.
     snapshot_interval:    Steps between self-play snapshots.
+    save_checkpoints:     If True, save periodic model checkpoints.
     checkpoint_interval:  Steps between checkpoint saves.
     verbose:              SB3 verbosity (0=quiet, 1=stats, 2=debug).
     device:               Torch device ('auto', 'cpu', 'cuda', 'mps').
@@ -333,17 +337,19 @@ def train(
 
     # Callbacks
     training_cb = TrainingCallback(verbose=verbose)
+    callbacks = [training_cb]
 
-    checkpoint_dir = os.path.join(os.path.dirname(save_path), 'checkpoints')
-    checkpoint_cb = CheckpointCallback(
-        save_freq=max(checkpoint_interval // n_envs, 1),
-        save_path=checkpoint_dir,
-        name_prefix='push_fight',
-        verbose=1,
-    )
+    if save_checkpoints:
+        checkpoint_dir = os.path.join(os.path.dirname(save_path), 'checkpoints')
+        checkpoint_cb = CheckpointCallback(
+            save_freq=max(checkpoint_interval // n_envs, 1),
+            save_path=checkpoint_dir,
+            name_prefix='push_fight',
+            verbose=1,
+        )
+        callbacks.append(checkpoint_cb)
 
-    callbacks = [training_cb, checkpoint_cb]
-    if use_selfplay:
+    if use_selfplay and save_snapshots:
         selfplay_cb = SelfPlayCallback(
             pool_dir=pool_dir,
             snapshot_interval=max(snapshot_interval // n_envs, 1),
@@ -351,6 +357,8 @@ def train(
         )
         callbacks.append(selfplay_cb)
         print(f"Self-play enabled — pool: {pool_dir}  p_random: {p_random}")
+    elif use_selfplay:
+        print(f"Self-play enabled (snapshots disabled) — p_random: {p_random}")
 
     callback_list = CallbackList(callbacks)
 
@@ -527,6 +535,14 @@ Examples:
                         help='Disable self-play (use plain PushFightEnv; faster for smoke tests)')
     parser.add_argument('--pool-dir', type=str, default='models/pool',
                         help='Directory for self-play opponent snapshots (default: models/pool)')
+    parser.add_argument('--no-snapshots', action='store_true',
+                        help='Disable saving self-play snapshots to the pool directory')
+    parser.add_argument('--snapshot-interval', type=int, default=None,
+                        help='Steps between self-play snapshots (default: 50000)')
+    parser.add_argument('--no-checkpoints', action='store_true',
+                        help='Disable saving periodic model checkpoints')
+    parser.add_argument('--checkpoint-interval', type=int, default=None,
+                        help='Steps between checkpoint saves (default: 100000)')
     parser.add_argument('--p-random', type=float, default=None,
                         help='Probability opponent plays randomly each episode (overrides preset)')
     parser.add_argument('--device', type=str, default='auto',
@@ -571,6 +587,10 @@ Examples:
             use_selfplay=not args.no_selfplay,
             pool_dir=args.pool_dir,
             p_random=p_random,
+            save_snapshots=not args.no_snapshots,
+            snapshot_interval=args.snapshot_interval or 50_000,
+            save_checkpoints=not args.no_checkpoints,
+            checkpoint_interval=args.checkpoint_interval or 100_000,
             device=args.device,
             difficulty=tier,
             eval_episodes=args.eval_episodes,
@@ -599,6 +619,10 @@ Examples:
             use_selfplay=not args.no_selfplay,
             pool_dir=args.pool_dir,
             p_random=args.p_random if args.p_random is not None else 0.2,
+            save_snapshots=not args.no_snapshots,
+            snapshot_interval=args.snapshot_interval or 50_000,
+            save_checkpoints=not args.no_checkpoints,
+            checkpoint_interval=args.checkpoint_interval or 100_000,
             device=args.device,
             eval_episodes=args.eval_episodes,
         )

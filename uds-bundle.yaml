@@ -26,11 +26,11 @@ packages:
               path: policies
 
   - name: init
-    repository: oci://ghcr.io/zarf-dev/packages/init
+    repository: ghcr.io/zarf-dev/packages/init
     ref: v0.71.1
 
   - name: core
-    repository: oci://ghcr.io/defenseunicorns/packages/uds/core
+    repository: ghcr.io/defenseunicorns/packages/uds/core
     ref: 0.61.0-upstream
     overrides:
       pepr-uds-core:
