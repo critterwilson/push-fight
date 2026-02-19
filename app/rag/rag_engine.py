@@ -8,7 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
 class PushFightRAG:
-    def __init__(self, rules_path="assets/rules.md", model_name="llama3"):
+    def __init__(self, rules_path="assets/rules.md", model_name="llama3.2:1b"):
         self.model_name = model_name
         self.rules_path = rules_path
         self.vector_store = None
