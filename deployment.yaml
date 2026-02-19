@@ -28,16 +28,21 @@ spec:
         image: chromadb/chroma:latest
         ports:
         - containerPort: 8000
+        env:
+        - name: IS_PERSISTENT
+          value: "TRUE"
+        - name: PERSIST_DIRECTORY
+          value: "/data"
         resources:
           requests:
-            cpu: "250m"
-            memory: "256Mi"
+            cpu: "100m"
+            memory: "128Mi"
           limits:
-            cpu: "1"
-            memory: "1Gi"
+            cpu: "500m"
+            memory: "512Mi"
         volumeMounts:
         - name: chroma-data
-          mountPath: /chroma/chroma
+          mountPath: /data
       volumes:
       - name: chroma-data
         emptyDir: {}
@@ -79,11 +84,11 @@ spec:
         - containerPort: 11434
         resources:
           requests:
-            cpu: "1"
-            memory: "2Gi"
+            cpu: "250m"
+            memory: "512Mi"
           limits:
-            cpu: "4"
-            memory: "8Gi"
+            cpu: "2"
+            memory: "6Gi"
         volumeMounts:
         - name: ollama-data
           mountPath: /root/.ollama
@@ -135,6 +140,8 @@ spec:
           value: "chromadb"
         - name: CHROMA_PORT
           value: "8000"
+        - name: USER
+          value: "appuser"
         livenessProbe:
           httpGet:
             path: /health
@@ -153,11 +160,11 @@ spec:
           failureThreshold: 3
         resources:
           requests:
-            cpu: "500m"
-            memory: "512Mi"
+            cpu: "100m"
+            memory: "128Mi"
           limits:
-            cpu: "2"
-            memory: "2Gi"
+            cpu: "1"
+            memory: "1Gi"
         volumeMounts:
         - name: saves
           mountPath: /app/saves

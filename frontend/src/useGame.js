@@ -59,6 +59,7 @@ export function useGame() {
   const [messages, setMessages]           = useState([])
   const [error, setError]                 = useState(null)
   const [connectionStatus, setConnectionStatus] = useState('idle') // 'idle'|'connected'|'disconnected'
+  const [selectedSetupPiece, setSelectedSetupPiece] = useState(null) // piece name during setup
 
   const errorTimerRef = useRef(null)
   const connectorRef  = useRef(null)
@@ -129,9 +130,9 @@ export function useGame() {
 
   // ── Game actions ──────────────────────────────────────────────────────────
 
-  const createGame = useCallback(async (mode, difficulty) => {
+  const createGame = useCallback(async (mode, difficulty, playerColor = 'white') => {
     try {
-      const data = await api.createGame(mode, difficulty)
+      const data = await api.createGame(mode, difficulty, playerColor)
       setSessionId(data.sessionId)
       setGameState(data.state)
       deselect()
@@ -253,6 +254,73 @@ export function useGame() {
     }
   }, [sessionId])
 
+  // Direct action callers used by voice control (bypass click-state machine)
+  const voiceMove = useCallback(async (from, to) => {
+    if (!sessionId) return
+    try {
+      const data = await api.makeMove(sessionId, from, to)
+      setGameState(data.state)
+      deselect()
+    } catch (e) {
+      showError(e.message)
+    }
+  }, [sessionId, deselect, showError])
+
+  const voicePush = useCallback(async (pos, dir) => {
+    if (!sessionId) return
+    try {
+      const data = await api.makePush(sessionId, pos, dir)
+      setGameState(data.state)
+      deselect()
+    } catch (e) {
+      showError(e.message)
+    }
+  }, [sessionId, deselect, showError])
+
+  // ── Setup phase ───────────────────────────────────────────────────────────
+
+  const handleSetupCellClick = useCallback(async (y, x) => {
+    if (!sessionId || !gameState?.setupMode) return
+    const cell = gameState.board[y][x]
+    const piece = cell.piece
+
+    // Click a placed piece belonging to the current setup player → remove it
+    if (piece?.team === gameState.currentPlayer) {
+      try {
+        const data = await api.setupRemove(sessionId, y, x)
+        setGameState(data.state)
+      } catch (e) {
+        showError(e.message)
+      }
+      return
+    }
+
+    // Click an empty valid cell with a piece selected → place it
+    if (selectedSetupPiece && !piece && !cell.killZone) {
+      try {
+        const data = await api.setupPlace(sessionId, y, x, selectedSetupPiece)
+        setGameState(data.state)
+        // Auto-clear selection once all pieces are placed
+        const team = gameState.currentPlayer
+        const afterUnplaced = data.state.placementStatus[team].unplaced
+        if (afterUnplaced.length === 0) setSelectedSetupPiece(null)
+      } catch (e) {
+        showError(e.message)
+      }
+    }
+  }, [sessionId, gameState, selectedSetupPiece, showError])
+
+  const confirmSetup = useCallback(async () => {
+    if (!sessionId) return
+    try {
+      const data = await api.setupConfirm(sessionId)
+      setGameState(data.state)
+      setSelectedSetupPiece(null)
+    } catch (e) {
+      showError(e.message)
+    }
+  }, [sessionId, showError])
+
   const saveGame = useCallback(async (filename) => {
     if (!sessionId) return
     try {
@@ -291,5 +359,11 @@ export function useGame() {
     askReferee,
     saveGame,
     loadSave,
+    voiceMove,
+    voicePush,
+    selectedSetupPiece,
+    setSelectedSetupPiece,
+    handleSetupCellClick,
+    confirmSetup,
   }
 }

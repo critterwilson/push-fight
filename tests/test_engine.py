@@ -36,6 +36,35 @@ class TestPiece:
     def test_piece_from_dict_none(self):
         assert Piece.from_dict(None) is None
 
+    # ------------------------------------------------------------------
+    # name field (added for voice-control feature)
+    # ------------------------------------------------------------------
+
+    def test_piece_name_defaults_to_none(self):
+        piece = Piece('white', 'square')
+        assert piece.name is None
+
+    def test_piece_name_stored(self):
+        piece = Piece('white', 'square', name='sleeve')
+        assert piece.name == 'sleeve'
+
+    def test_piece_serialization_includes_name(self):
+        piece = Piece('white', 'square', name='lapel')
+        d = piece.to_dict()
+        assert 'name' in d
+        assert d['name'] == 'lapel'
+
+    def test_piece_name_roundtrip(self):
+        piece = Piece('black', 'round', name='neck')
+        restored = Piece.from_dict(piece.to_dict())
+        assert restored.name == 'neck'
+
+    def test_piece_from_dict_missing_name_is_backward_compatible(self):
+        """Pieces saved before the name field was added should load without error."""
+        old_data = {'team': 'white', 'shape': 'square'}  # no 'name' key
+        restored = Piece.from_dict(old_data)
+        assert restored.name is None
+
 
 # ============================================================
 # Board Tests
@@ -436,7 +465,7 @@ class TestPushMechanics:
         assert game.board.anchor_pos == (6, 1)
 
     def test_anchor_blocks_push_chain(self):
-        """Anchor in a push chain prevents pieces at and behind it from moving."""
+        """Anchor in a push chain blocks the entire push — nothing moves."""
         board = PushFightBoard()
         board.pieces[4][1] = Piece('white', 'square')
         board.pieces[5][1] = Piece('black', 'square')
@@ -446,26 +475,18 @@ class TestPushMechanics:
         game = GameState(board)
 
         result = game.perform_push(4, 1, (1, 0))  # Push down
-        # The anchor at (5,1) means piece at index 1 (5,1) doesn't move
-        # Piece at index 0 (4,1) is before anchor - also shouldn't move (index <= anchor_index)
-        # The round at (6,1) is at index 2, after anchor_index=1, so it should be pushed
-        # Wait - actually the code says "if anchor_in_chain and i <= anchor_index: continue"
-        # chain = [(4,1), (5,1), (6,1)], anchor at (5,1) is index 1
-        # i=2 (6,1): i > anchor_index, tries to move to (7,1) but checks if (7,1) == anchor_pos? No.
-        #   But (6,1) also checks if destination is occupied - (7,1) is empty, so it moves.
-        # i=1 (5,1): i <= anchor_index, SKIP
-        # i=0 (4,1): i <= anchor_index, SKIP
-        # So: (4,1) stays, (5,1) stays (anchored), (6,1) tries to move to (7,1)
-        # But wait - destination check: board.pieces[7][1] should be None after (6,1) moves there.
-        # Actually (6,1) can't move because the new position check says pieces[new_y][new_x] is not None?
-        # No, (7,1) is empty, so (6,1) round moves to (7,1).
+        # Anchor at (5,1) blocks the entire chain — no pieces move
+        assert result is True  # Push still counts as an action
 
-        # Let's verify: (4,1) should still have white square
+        # (4,1) should still have white square (didn't move)
         assert game.board.get_piece(4, 1) is not None
         assert game.board.get_piece(4, 1).team == 'white'
         # (5,1) should still have black square (anchored)
         assert game.board.get_piece(5, 1) is not None
         assert game.board.get_piece(5, 1).team == 'black'
+        # (6,1) should still have black round (blocked by anchor)
+        assert game.board.get_piece(6, 1) is not None
+        assert game.board.get_piece(6, 1).shape == 'round'
 
     def test_push_sets_push_completed(self):
         """A successful push sets push_completed to True."""
@@ -769,8 +790,8 @@ class TestEdgeCases:
         # Can push right (3,1 is empty), up (2,0 is empty), down (4,0 is empty)
         assert game.has_legal_push() is True
 
-    def test_push_does_not_move_pieces_into_occupied_space(self):
-        """If chain processing encounters occupied destination, piece stays."""
+    def test_push_does_not_move_pieces_past_anchor(self):
+        """Anchor blocks the entire push — no pieces move, including downstream."""
         board = PushFightBoard()
         board.pieces[4][1] = Piece('white', 'square')
         board.pieces[5][1] = Piece('black', 'square')
@@ -778,16 +799,12 @@ class TestEdgeCases:
         board.anchor_pos = (5, 1)  # Anchor on middle piece
         game = GameState(board)
 
-        # Push down: anchor at (5,1) blocks pieces at index <= anchor_index
-        # chain = [(4,1), (5,1), (6,1)], anchor at index 1
-        # (6,1) at index 2 tries to move to (7,1) - should succeed
-        # (5,1) at index 1 - anchored, skip
-        # (4,1) at index 0 - before anchor, skip
+        # Push down: anchor at (5,1) blocks entire chain
         game.perform_push(4, 1, (1, 0))
-        # (4,1) should still be occupied (white square didn't move)
-        assert game.board.get_piece(4, 1) is not None
-        # (5,1) should still be occupied (anchored)
-        assert game.board.get_piece(5, 1) is not None
+        # All pieces stay in place
+        assert game.board.get_piece(4, 1) is not None  # white square
+        assert game.board.get_piece(5, 1) is not None  # black square (anchored)
+        assert game.board.get_piece(6, 1) is not None  # black round (blocked)
 
     def test_multiple_pieces_pushed_off_same_push(self):
         """A long chain could push multiple pieces off in theory.
@@ -802,3 +819,79 @@ class TestEdgeCases:
         game.pieces_pushed_off['black']['squares'] = 2
         assert game.check_game_over() is True
         assert game.winner == 'white'
+
+
+# ============================================================
+# Initial Game Piece Names (voice-control feature)
+# ============================================================
+
+class TestInitialGamePieceNames:
+    """Verify that create_initial_game() assigns jiu-jitsu grip / submission names
+    to every piece and that names survive moves and serialization."""
+
+    def setup_method(self):
+        self.game = GameState.create_initial_game()
+
+    def _pieces_by_team(self, team):
+        """Return all Piece objects on the board for a given team."""
+        pieces = []
+        for y in range(10):
+            for x in range(4):
+                p = self.game.board.get_piece(y, x)
+                if p and p.team == team:
+                    pieces.append(p)
+        return pieces
+
+    def test_white_squares_are_sleeve_lapel_belt(self):
+        squares = [p for p in self._pieces_by_team('white') if p.shape == 'square']
+        names = sorted(p.name for p in squares)
+        assert names == ['belt', 'lapel', 'sleeve']
+
+    def test_white_rounds_are_neck_and_joint(self):
+        rounds = [p for p in self._pieces_by_team('white') if p.shape == 'round']
+        names = sorted(p.name for p in rounds)
+        assert names == ['joint', 'neck']
+
+    def test_black_squares_are_sleeve_lapel_belt(self):
+        squares = [p for p in self._pieces_by_team('black') if p.shape == 'square']
+        names = sorted(p.name for p in squares)
+        assert names == ['belt', 'lapel', 'sleeve']
+
+    def test_black_rounds_are_neck_and_joint(self):
+        rounds = [p for p in self._pieces_by_team('black') if p.shape == 'round']
+        names = sorted(p.name for p in rounds)
+        assert names == ['joint', 'neck']
+
+    def test_every_piece_has_a_name(self):
+        for y in range(10):
+            for x in range(4):
+                p = self.game.board.get_piece(y, x)
+                if p:
+                    assert p.name is not None, f"Piece at ({y},{x}) has no name"
+
+    def test_piece_names_survive_serialization_roundtrip(self):
+        restored = GameState.from_dict(self.game.to_dict())
+        for y in range(10):
+            for x in range(4):
+                orig = self.game.board.get_piece(y, x)
+                rest = restored.board.get_piece(y, x)
+                if orig:
+                    assert rest is not None
+                    assert rest.name == orig.name, f"Name mismatch at ({y},{x})"
+
+    def test_piece_name_travels_with_piece_after_move(self):
+        """Moving a piece must not lose or change its name."""
+        # White sleeve is at (4,0) in the default layout
+        sleeve = self.game.board.get_piece(4, 0)
+        assert sleeve is not None and sleeve.name == 'sleeve'
+
+        # Find a valid destination and move there
+        valid = self.game.board.get_valid_moves(4, 0)
+        assert valid, "Sleeve at (4,0) should have at least one valid move"
+        to_y, to_x = next(iter(valid))
+        success, _ = self.game.perform_move((4, 0), (to_y, to_x))
+        assert success
+
+        moved = self.game.board.get_piece(to_y, to_x)
+        assert moved is not None
+        assert moved.name == 'sleeve'

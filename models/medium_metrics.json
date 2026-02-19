@@ -1,0 +1,18 @@
+{
+  "difficulty": "medium",
+  "timesteps_trained": 5000000,
+  "p_random_training": 0.1,
+  "vs_random": {
+    "n_episodes": 200,
+    "win_rate": 0.98,
+    "avg_reward": 3.9343,
+    "avg_episode_length": 70.56
+  },
+  "vs_previous_tier": {
+    "n_episodes": 200,
+    "win_rate": 1.0,
+    "avg_reward": 20.075,
+    "avg_episode_length": 300.0
+  },
+  "saved_at": "2026-02-19T02:05:53.831515+00:00"
+}

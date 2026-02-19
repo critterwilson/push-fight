@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 class CreateGameRequest(BaseModel):
     mode: Literal["pvp", "pvai"] = "pvp"
     difficulty: Literal["easy", "medium", "hard"] = "medium"
+    player_color: Literal["white", "black"] = "white"
 
 
 class MoveRequest(BaseModel):
@@ -23,6 +24,12 @@ class MoveRequest(BaseModel):
 class PushRequest(BaseModel):
     piece: List[int] = Field(..., min_length=2, max_length=2)      # [y, x]
     direction: List[int] = Field(..., min_length=2, max_length=2)  # [dy, dx]
+
+
+class SetupPlaceRequest(BaseModel):
+    y: int
+    x: int
+    name: str  # piece name: sleeve | lapel | belt | neck | joint
 
 
 class AskRequest(BaseModel):

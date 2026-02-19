@@ -10,6 +10,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.server.session import GameSession
 
+_PIECE_ROSTER = ['sleeve', 'lapel', 'belt', 'neck', 'joint']
+
+def _unplaced_pieces(board, team: str) -> list[str]:
+    placed = {p.name for row in board.pieces for p in row if p and p.team == team}
+    return [n for n in _PIECE_ROSTER if n not in placed]
+
 
 def serialize_state(session: "GameSession") -> dict:
     """
@@ -29,7 +35,7 @@ def serialize_state(session: "GameSession") -> dict:
         for x in range(4):
             piece_obj = board.pieces[y][x]
             piece = (
-                {"team": piece_obj.team, "shape": piece_obj.shape}
+                {"team": piece_obj.team, "shape": piece_obj.shape, "name": piece_obj.name}
                 if piece_obj is not None
                 else None
             )
@@ -48,6 +54,7 @@ def serialize_state(session: "GameSession") -> dict:
         session.mode == "pvai"
         and game.current_player == session.ai_team
         and not game.game_over
+        and not game.setup_mode
     )
 
     return {
@@ -64,4 +71,9 @@ def serialize_state(session: "GameSession") -> dict:
         "mode": session.mode,
         "aiTeam": session.ai_team if session.mode == "pvai" else None,
         "isAiTurn": is_ai_turn,
+        "setupMode": game.setup_mode,
+        "placementStatus": {
+            "white": {**game.get_placement_status("white"), "unplaced": _unplaced_pieces(board, "white")},
+            "black": {**game.get_placement_status("black"), "unplaced": _unplaced_pieces(board, "black")},
+        },
     }

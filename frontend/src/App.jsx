@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import ThemeToggle from './ThemeToggle'
 import { useGame } from './useGame'
+import { useVoiceControl } from './useVoiceControl'
 import { Board } from './Board'
 import { StatusBar } from './StatusBar'
 import { GameControls } from './GameControls'
@@ -11,19 +13,40 @@ export default function App() {
   const [showModal, setShowModal] = useState(true)
   const [showChat, setShowChat]   = useState(false)
 
-  const handleStart = async (mode, difficulty) => {
-    await game.createGame(mode, difficulty)
+  const voice = useVoiceControl({
+    gameState:    game.gameState,
+    sessionId:    game.sessionId,
+    onVoiceMove:  game.voiceMove,
+    onVoicePush:  game.voicePush,
+    onSkipMoves:  game.skipMoves,
+  })
+
+  const handleStart = async (mode, difficulty, playerColor) => {
+    await game.createGame(mode, difficulty, playerColor)
     setShowModal(false)
   }
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1 className="app-title">Push Fight</h1>
-        <div className="header-actions">
+        <div className="app-title-wrap">
+          <h1 className="app-title">Push Fight</h1>
           <ConnectionPip status={game.connectionStatus} />
+        </div>
+        <div className="header-actions">
+          <ThemeToggle />
           {game.sessionId && (
             <>
+              {voice.isSupported && (
+                <button
+                  className={`btn btn-ghost btn-small voice-toggle${voice.isListening ? ' voice-toggle--active' : ''}`}
+                  onClick={voice.toggle}
+                  aria-pressed={voice.isListening}
+                  aria-label={voice.isListening ? 'Stop voice control' : 'Start voice control'}
+                >
+                  {voice.isListening ? 'Mic On' : 'Mic Off'}
+                </button>
+              )}
               <button
                 className="btn btn-ghost btn-small"
                 onClick={() => setShowChat(v => !v)}
@@ -44,6 +67,20 @@ export default function App() {
         </div>
       </header>
 
+      {/* Voice command feedback */}
+      {voice.lastCommand && (
+        <div
+          className={`voice-status voice-status--${voice.lastCommand.status}`}
+          aria-live="polite"
+        >
+          {voice.lastCommand.status === 'err'
+            ? `"${voice.lastCommand.text}" — ${voice.lastCommand.detail}`
+            : voice.lastCommand.status === 'no-match'
+            ? `"${voice.lastCommand.text}" — not recognised`
+            : `"${voice.lastCommand.text}"`}
+        </div>
+      )}
+
       {/* Error toast */}
       {game.error && (
         <div className="error-toast" role="alert" aria-live="assertive">
@@ -63,8 +100,10 @@ export default function App() {
                   validMoves={game.validMoves}
                   validPushDirs={game.validPushDirs}
                   pendingAiAction={game.pendingAiAction}
-                  onCellClick={game.handleCellClick}
+                  onCellClick={game.gameState.setupMode ? game.handleSetupCellClick : game.handleCellClick}
                   onPushDir={game.handlePushDir}
+                  setupMode={game.gameState.setupMode}
+                  setupPlayer={game.gameState.currentPlayer}
                 />
               </div>
               <BoardLegend />
@@ -83,6 +122,9 @@ export default function App() {
                 sessionId={game.sessionId}
                 onSave={game.saveGame}
                 onLoad={game.loadSave}
+                selectedSetupPiece={game.selectedSetupPiece}
+                onSetupPieceSelect={game.setSelectedSetupPiece}
+                onConfirmSetup={game.confirmSetup}
               />
               {showChat && (
                 <ChatPanel messages={game.messages} onAsk={game.askReferee} />
@@ -103,6 +145,11 @@ export default function App() {
           onClose={game.sessionId ? () => setShowModal(false) : null}
         />
       )}
+
+      <footer className="app-footer">
+        <img src="/doug.svg" alt="Unicorn Delivery Service mascot" />
+        <span>Powered by Unicorn Delivery Service</span>
+      </footer>
     </div>
   )
 }
@@ -132,19 +179,23 @@ function ConnectionPip({ status }) {
 // ---------------------------------------------------------------------------
 
 function NewGameModal({ onStart, onClose }) {
-  const [mode, setMode]         = useState('pvp')
-  const [difficulty, setDiff]   = useState('medium')
-  const [starting, setStarting] = useState(false)
+  const [mode, setMode]             = useState('pvp')
+  const [difficulty, setDiff]       = useState('medium')
+  const [playerColor, setColor]     = useState('white')
+  const [starting, setStarting]     = useState(false)
 
   const handleStart = async () => {
     setStarting(true)
-    await onStart(mode, difficulty)
+    await onStart(mode, difficulty, playerColor)
     setStarting(false)
   }
 
   const handleKeyDown = (e) => {
     if (e.key === 'Escape' && onClose) onClose()
   }
+
+  const aiColor = playerColor === 'white' ? 'Black' : 'White'
+  const humanColor = playerColor === 'white' ? 'White' : 'Black'
 
   return (
     <div
@@ -177,6 +228,17 @@ function NewGameModal({ onStart, onClose }) {
 
           {mode === 'pvai' && (
             <>
+              <label className="field-label">Play as</label>
+              <div className="radio-group" role="radiogroup" aria-label="Player colour">
+                {[['white', 'White (goes first)'], ['black', 'Black (goes second)']].map(([val, label]) => (
+                  <label key={val} className={`radio-option ${playerColor === val ? 'selected' : ''}`}>
+                    <input type="radio" name="playerColor" value={val} checked={playerColor === val}
+                      onChange={() => setColor(val)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
               <label className="field-label">Difficulty</label>
               <div className="radio-group" role="radiogroup" aria-label="AI difficulty">
                 {['easy', 'medium', 'hard'].map(d => (
@@ -188,7 +250,7 @@ function NewGameModal({ onStart, onClose }) {
                 ))}
               </div>
               <p className="modal-note">
-                You play as <strong>White</strong>. The AI plays as Black.
+                You play as <strong>{humanColor}</strong>. The AI plays as {aiColor}.
               </p>
             </>
           )}
@@ -215,10 +277,10 @@ function NewGameModal({ onStart, onClose }) {
 
 function BoardLegend() {
   const items = [
-    { color: '#f0e8d8', stroke: '#b89a60', shape: 'square', label: 'White square' },
-    { color: '#f0e8d8', stroke: '#b89a60', shape: 'circle', label: 'White round'  },
-    { color: '#1e0e06', stroke: '#6a3818', shape: 'square', label: 'Black square' },
-    { color: '#1e0e06', stroke: '#6a3818', shape: 'circle', label: 'Black round'  },
+    { color: '#f0e8d8', stroke: '#b89a60', shape: 'square', label: 'Sleeve / Lapel / Belt' },
+    { color: '#f0e8d8', stroke: '#b89a60', shape: 'circle', label: 'Neck / Joint'  },
+    { color: '#1e0e06', stroke: '#6a3818', shape: 'square', label: 'Sleeve / Lapel / Belt' },
+    { color: '#1e0e06', stroke: '#6a3818', shape: 'circle', label: 'Neck / Joint'  },
     { color: '#ffd700', stroke: 'none',   shape: 'dot',    label: 'Anchor'       },
   ]
   return (

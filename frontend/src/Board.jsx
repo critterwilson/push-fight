@@ -11,12 +11,9 @@
 const CELL = 64
 
 const C = {
-  killZone:         '#0e1014',
-  playable:         '#253d1e',
-  selected:         '#1e4d2e',
-  validMoveDot:     'rgba(60, 220, 120, 0.65)',
+  killZoneFill:     'rgba(0,0,0,0.38)',
+  validMoveDot:     'rgba(0, 85, 212, 0.65)',
   selBorder:        '#ffd700',
-  cellBorder:       '#192e14',
   pieceWhite:       '#f0e8d8',
   pieceWhiteStroke: '#b89a60',
   pieceBlack:       '#1e0e06',
@@ -32,18 +29,49 @@ const C = {
 export function Board({
   gameState, selectedPiece, validMoves, validPushDirs,
   pendingAiAction, onCellClick, onPushDir,
+  setupMode, setupPlayer,
 }) {
-  const W = 4 * CELL
-  const H = 10 * CELL
+  const W = 10 * CELL
+  const H = 4 * CELL
+  const GUTTER_LEFT = 20
+  const GUTTER_TOP  = 20
 
   return (
     <svg
-      width={W} height={H}
-      viewBox={`0 0 ${W} ${H}`}
+      width={W + GUTTER_LEFT} height={H + GUTTER_TOP}
+      viewBox={`${-GUTTER_LEFT} ${-GUTTER_TOP} ${W + GUTTER_LEFT} ${H + GUTTER_TOP}`}
       style={{ display: 'block' }}
       role="application"
-      aria-label="Push Fight board, 10 rows by 4 columns"
+      aria-label="Push Fight board, landscape: 10 columns wide, 4 rows tall"
     >
+      {/* Column labels A–D — left side (y-axis after transposing) */}
+      {COL_LETTERS.map((letter, x) => (
+        <text
+          key={letter}
+          x={-GUTTER_LEFT / 2 - 1} y={x * CELL + CELL / 2}
+          textAnchor="middle" dominantBaseline="middle"
+          fontSize={12} fontFamily="system-ui, sans-serif"
+          fill="rgba(180,120,60,0.85)"
+          aria-hidden="true"
+        >
+          {letter}
+        </text>
+      ))}
+
+      {/* Row labels 1–10 — top (x-axis after transposing) */}
+      {Array.from({ length: 10 }, (_, y) => (
+        <text
+          key={y}
+          x={y * CELL + CELL / 2} y={-GUTTER_TOP / 2 - 1}
+          textAnchor="middle" dominantBaseline="middle"
+          fontSize={12} fontFamily="system-ui, sans-serif"
+          fill="rgba(180,120,60,0.85)"
+          aria-hidden="true"
+        >
+          {y + 1}
+        </text>
+      ))}
+
       {gameState.board.map((row, y) =>
         row.map((cell, x) => {
           const isSel = selectedPiece?.[0] === y && selectedPiece?.[1] === x
@@ -56,6 +84,10 @@ export function Board({
             && pendingAiAction.piece[0] === y && pendingAiAction.piece[1] === x
           const isAiHighlighted = isAiSrc || isAiPusher
 
+          // Setup: highlight empty cells on the current setup player's half
+          const onSetupHalf = setupPlayer === 'white' ? y <= 4 : y >= 5
+          const isSetupTarget = setupMode && onSetupHalf && !cell.killZone && !cell.piece
+
           return (
             <BoardCell
               key={`${y}-${x}`}
@@ -63,15 +95,16 @@ export function Board({
               isSelected={isSel}
               isValidMove={isVM}
               isAiHighlighted={isAiHighlighted}
+              isSetupTarget={isSetupTarget}
               onCellClick={onCellClick}
             />
           )
         })
       )}
 
-      {/* Centre line */}
+      {/* Centre line — vertical after transposing */}
       <line
-        x1={0} y1={4.5 * CELL} x2={W} y2={4.5 * CELL}
+        x1={4.5 * CELL} y1={0} x2={4.5 * CELL} y2={H}
         stroke={C.centerLine} strokeWidth={2} strokeDasharray="6 4"
         pointerEvents="none"
         aria-hidden="true"
@@ -94,27 +127,40 @@ export function Board({
 // BoardCell
 // ---------------------------------------------------------------------------
 
-function cellAriaLabel(cell, y, x) {
-  const row = y + 1
-  const col = x + 1
-  if (cell.killZone) return `Kill zone, row ${row}, column ${col}`
-  if (!cell.piece)   return `Empty cell, row ${row}, column ${col}`
-  const anchor = cell.isAnchor ? ', anchored' : ''
-  return `${cell.piece.team} ${cell.piece.shape} piece${anchor}, row ${row}, column ${col}`
+const COL_LETTERS = ['A', 'B', 'C', 'D']
+
+function cellCoord(y, x) {
+  return `${COL_LETTERS[x]}${y + 1}`
 }
 
-function BoardCell({ cell, y, x, isSelected, isValidMove, isAiHighlighted, onCellClick }) {
+function cellAriaLabel(cell, y, x) {
+  const coord = cellCoord(y, x)
+  if (cell.killZone) return `Kill zone ${coord}`
+  if (!cell.piece)   return `Empty cell ${coord}`
+  const name   = cell.piece.name ? cell.piece.name.charAt(0).toUpperCase() + cell.piece.name.slice(1) : cell.piece.team
+  const anchor = cell.isAnchor ? ', anchored' : ''
+  return `${name} (${cell.piece.team})${anchor}, ${coord}`
+}
+
+function BoardCell({ cell, y, x, isSelected, isValidMove, isAiHighlighted, isSetupTarget, onCellClick }) {
   const { killZone, piece, isAnchor } = cell
 
-  const fill = killZone ? C.killZone : isSelected ? C.selected : C.playable
+  const fill = killZone
+    ? C.killZoneFill
+    : isSelected
+    ? 'rgba(255, 215, 0, 0.2)'
+    : isSetupTarget
+    ? 'rgba(100, 200, 120, 0.08)'
+    : 'transparent'
   const borderColor = isSelected
     ? C.selBorder
     : isAiHighlighted
     ? C.aiHighlight
-    : killZone
-    ? C.killZone
-    : C.cellBorder
-  const borderW = isSelected || isAiHighlighted ? 2.5 : 1
+    : isSetupTarget
+    ? 'rgba(100, 200, 120, 0.5)'
+    : 'rgba(0, 0, 0, 0.15)'
+  const borderW = isSelected || isAiHighlighted ? 2.5 : isSetupTarget ? 1.5 : 1
+  const strokeDash = isSetupTarget ? '4 3' : undefined
 
   const handleKey = (e) => {
     if (!killZone && (e.key === 'Enter' || e.key === ' ')) {
@@ -136,17 +182,18 @@ function BoardCell({ cell, y, x, isSelected, isValidMove, isAiHighlighted, onCel
       style={{ cursor: killZone ? 'default' : 'pointer', outline: 'none' }}
     >
       <rect
-        x={x * CELL + 1} y={y * CELL + 1}
+        x={y * CELL + 1} y={x * CELL + 1}
         width={CELL - 2} height={CELL - 2}
         fill={fill}
         stroke={borderColor} strokeWidth={borderW}
+        strokeDasharray={strokeDash}
         rx={3}
       />
 
       {/* AI pending-action glow */}
       {isAiHighlighted && (
         <rect
-          x={x * CELL + 1} y={y * CELL + 1}
+          x={y * CELL + 1} y={x * CELL + 1}
           width={CELL - 2} height={CELL - 2}
           fill={C.aiHighlightGlow} rx={3}
           pointerEvents="none"
@@ -157,7 +204,7 @@ function BoardCell({ cell, y, x, isSelected, isValidMove, isAiHighlighted, onCel
       {/* Valid move indicator */}
       {isValidMove && !piece && (
         <circle
-          cx={x * CELL + CELL / 2} cy={y * CELL + CELL / 2}
+          cx={y * CELL + CELL / 2} cy={x * CELL + CELL / 2}
           r={11} fill={C.validMoveDot}
           pointerEvents="none"
           aria-hidden="true"
@@ -181,15 +228,18 @@ function GamePiece({ piece, x, y, isAnchor }) {
   const fill    = isWhite ? C.pieceWhite    : C.pieceBlack
   const stroke  = isWhite ? C.pieceWhiteStroke : C.pieceBlackStroke
   const pad     = 9
-  const cx      = x * CELL + CELL / 2
-  const cy      = y * CELL + CELL / 2
+  const cx      = y * CELL + CELL / 2
+  const cy      = x * CELL + CELL / 2
   const size    = CELL - pad * 2
+  const label   = piece.name ? piece.name : (isWhite ? 'W' : 'B')
+  const pieceName = piece.name ? piece.name.charAt(0).toUpperCase() + piece.name.slice(1) : (isWhite ? 'White' : 'Black')
 
   return (
     <g pointerEvents="none" aria-hidden="true">
+      <title>{pieceName} ({piece.team}) — {cellCoord(y, x)}</title>
       {piece.shape === 'square' ? (
         <rect
-          x={x * CELL + pad} y={y * CELL + pad}
+          x={y * CELL + pad} y={x * CELL + pad}
           width={size} height={size}
           fill={fill} stroke={stroke} strokeWidth={2.5} rx={8}
         />
@@ -200,14 +250,15 @@ function GamePiece({ piece, x, y, isAnchor }) {
         />
       )}
 
-      {/* Team label */}
+      {/* Piece full name */}
       <text
         x={cx} y={cy + 1}
         textAnchor="middle" dominantBaseline="middle"
-        fontSize={13} fontWeight="bold" fontFamily="system-ui, sans-serif"
+        fontSize={8} fontWeight="bold" fontFamily="system-ui, sans-serif"
         fill={isWhite ? '#7a5a28' : '#c89060'}
+        className={`piece-label ${isWhite ? 'piece-label-white' : 'piece-label-black'}`}
       >
-        {piece.team === 'white' ? 'W' : 'B'}
+        {label}
       </text>
 
       {/* Anchor gold dot */}
@@ -229,27 +280,34 @@ function PushArrow({ py, px, dy, dx, onPushDir }) {
   const MARGIN = 9
   const S      = 12
 
-  const cx  = px * CELL + CELL / 2
-  const cy  = py * CELL + CELL / 2
+  // Board is transposed: SVG x-axis = game row (py), SVG y-axis = game col (px)
+  const svgCX = py * CELL + CELL / 2
+  const svgCY = px * CELL + CELL / 2
   let tipX, tipY
-  if      (dy === -1) { tipX = cx;                        tipY = py * CELL + MARGIN }
-  else if (dy ===  1) { tipX = cx;                        tipY = py * CELL + CELL - MARGIN }
-  else if (dx === -1) { tipX = px * CELL + MARGIN;        tipY = cy }
-  else                { tipX = px * CELL + CELL - MARGIN; tipY = cy }
+  // dy=-1 (game row decreases) → visual left  (SVG x decreases)
+  if      (dy === -1) { tipX = py * CELL + MARGIN;        tipY = svgCY }
+  // dy=+1 (game row increases) → visual right (SVG x increases)
+  else if (dy ===  1) { tipX = py * CELL + CELL - MARGIN; tipY = svgCY }
+  // dx=-1 (game col decreases) → visual up    (SVG y decreases)
+  else if (dx === -1) { tipX = svgCX;                     tipY = px * CELL + MARGIN }
+  // dx=+1 (game col increases) → visual down  (SVG y increases)
+  else                { tipX = svgCX;                     tipY = px * CELL + CELL - MARGIN }
 
+  // Visual direction vector after transposition: (vx, vy) = (dy, dx)
   const pts = [
     [tipX,                          tipY                         ],
-    [tipX - dx * S - dy * S * 0.6, tipY - dy * S + dx * S * 0.6],
-    [tipX - dx * S + dy * S * 0.6, tipY - dy * S - dx * S * 0.6],
+    [tipX - dy * S - dx * S * 0.6, tipY - dx * S + dy * S * 0.6],
+    [tipX - dy * S + dx * S * 0.6, tipY - dx * S - dy * S * 0.6],
   ].map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ')
 
   const HIT = CELL / 2
-  const hx  = dx === -1 ? px * CELL : dx === 1 ? px * CELL + HIT : px * CELL + CELL / 4
-  const hy  = dy === -1 ? py * CELL : dy === 1 ? py * CELL + HIT : py * CELL + CELL / 4
-  const hw  = dx !== 0 ? HIT : CELL / 2
-  const hh  = dy !== 0 ? HIT : CELL / 2
+  const hx  = dy === -1 ? py * CELL : dy === 1 ? py * CELL + HIT : py * CELL + CELL / 4
+  const hy  = dx === -1 ? px * CELL : dx === 1 ? px * CELL + HIT : px * CELL + CELL / 4
+  const hw  = dy !== 0 ? HIT : CELL / 2
+  const hh  = dx !== 0 ? HIT : CELL / 2
 
-  const dirLabel = dy === -1 ? 'up' : dy === 1 ? 'down' : dx === -1 ? 'left' : 'right'
+  // Board is transposed: dy changes are left/right visually, dx changes are up/down
+  const dirLabel = dy === -1 ? 'left' : dy === 1 ? 'right' : dx === -1 ? 'up' : 'down'
 
   return (
     <g

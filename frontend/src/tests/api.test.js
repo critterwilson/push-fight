@@ -26,7 +26,7 @@ beforeEach(() => { vi.restoreAllMocks() })
 // ---------------------------------------------------------------------------
 
 describe('createGame', () => {
-  it('POSTs mode and difficulty, returns response', async () => {
+  it('POSTs mode, difficulty and player_color, returns response', async () => {
     const response = { sessionId: 'abc123', state: { currentPlayer: 'white' } }
     mockFetch(response)
 
@@ -35,9 +35,19 @@ describe('createGame', () => {
     expect(fetch).toHaveBeenCalledWith('/api/game', expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'pvp', difficulty: 'medium' }),
+      body: JSON.stringify({ mode: 'pvp', difficulty: 'medium', player_color: 'white' }),
     }))
     expect(result.sessionId).toBe('abc123')
+  })
+
+  it('POSTs player_color black when specified', async () => {
+    mockFetch({ sessionId: 'xyz', state: {} })
+
+    await api.createGame('pvai', 'medium', 'black')
+
+    expect(fetch).toHaveBeenCalledWith('/api/game', expect.objectContaining({
+      body: JSON.stringify({ mode: 'pvai', difficulty: 'medium', player_color: 'black' }),
+    }))
   })
 
   it('throws on HTTP error', async () => {

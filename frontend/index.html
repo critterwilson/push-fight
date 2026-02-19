@@ -6,6 +6,12 @@
     <title>Push Fight</title>
   </head>
   <body>
+    <script>
+      const savedTheme = localStorage.getItem('theme');
+      if (!savedTheme || savedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -168,60 +168,35 @@ class GameState:
                     break
 
         # 5. Execution: Shift pieces in reverse order to avoid overwriting
-        # If anchor is in chain, pieces before anchor can move, but anchor and pieces after it cannot
+        # If anchor is in chain, the entire push is blocked — nothing moves
         pieces_moved = False
-        
-        # Find anchor position in chain to determine what can move
-        anchor_index = -1
-        if anchor_in_chain:
-            for i, pos in enumerate(chain):
-                if pos == self.board.anchor_pos:
-                    anchor_index = i
-                    break
-        
+
         # Track pieces pushed into kill zone (multiple pieces can be pushed at once)
         pieces_pushed_off = []  # List of (piece, team) tuples
-        
-        # Move pieces in reverse order (from end of chain to start)
-        for i in range(len(chain) - 1, -1, -1):
-            pos = chain[i]
-            curr_y, curr_x = pos
-            
-            # If anchor is in chain, don't move anchor or any pieces after it (earlier in chain)
-            if anchor_in_chain and i <= anchor_index:
-                # This is the anchor or a piece after it - don't move
-                continue
-            
-            new_y, new_x = curr_y + dy, curr_x + dx
-            
-            # Safety check: don't move if destination would be the anchor position
-            if self.board.anchor_pos[0] is not None and (new_y, new_x) == self.board.anchor_pos:
-                # Can't move into anchor position - this piece is blocked by anchor
-                # Don't clear the piece's current position - it stays where it is
-                continue
-            
-            moving_piece = self.board.pieces[curr_y][curr_x]
-            if moving_piece is None:
-                # Piece already moved or doesn't exist - skip
-                continue
-            
-            # Check if destination is already occupied (shouldn't happen in normal flow, but safety check)
-            if self.board.pieces[new_y][new_x] is not None:
-                # Destination occupied - can't move here, don't clear current position
-                continue
-            
-            # Check if destination is kill zone - ALLOW it! (this is how you win)
-            if self.board.is_kill_zone(new_y, new_x):
-                # Piece is pushed into kill zone - remove it from board
-                self.board.pieces[curr_y][curr_x] = None  # Clear old spot
-                pieces_pushed_off.append((moving_piece, moving_piece.team))
-                pieces_moved = True
-                # Don't place piece in kill zone - it's removed from play
-            else:
-                # Normal move - place piece at destination
-                self.board.pieces[curr_y][curr_x] = None  # Clear old spot
-                self.board.pieces[new_y][new_x] = moving_piece
-                pieces_moved = True
+
+        if not anchor_in_chain:
+            # Normal push — move all pieces in reverse order (from end of chain to start)
+            for i in range(len(chain) - 1, -1, -1):
+                pos = chain[i]
+                curr_y, curr_x = pos
+
+                new_y, new_x = curr_y + dy, curr_x + dx
+
+                moving_piece = self.board.pieces[curr_y][curr_x]
+                if moving_piece is None:
+                    continue
+
+                # Check if destination is kill zone - ALLOW it! (this is how you win)
+                if self.board.is_kill_zone(new_y, new_x):
+                    # Piece is pushed into kill zone - remove it from board
+                    self.board.pieces[curr_y][curr_x] = None
+                    pieces_pushed_off.append((moving_piece, moving_piece.team))
+                    pieces_moved = True
+                else:
+                    # Normal move - place piece at destination
+                    self.board.pieces[curr_y][curr_x] = None
+                    self.board.pieces[new_y][new_x] = moving_piece
+                    pieces_moved = True
         
         # Log the push action
         self.log_action('push', piece=(y, x), direction=direction)
@@ -318,20 +293,20 @@ class GameState:
     def create_initial_game():
         board = PushFightBoard()
         
-        # White Team (Rows 1-4) 
-        # Most players put 4 pieces at the center line 
-        board.pieces[4][0] = Piece('white', 'square')
-        board.pieces[4][1] = Piece('white', 'square')
-        board.pieces[4][2] = Piece('white', 'square')
-        board.pieces[4][3] = Piece('white', 'round')
-        board.pieces[3][1] = Piece('white', 'round')
+        # White Team (Rows 1-4)
+        # Most players put 4 pieces at the center line
+        board.pieces[4][0] = Piece('white', 'square', name='sleeve')
+        board.pieces[4][1] = Piece('white', 'square', name='lapel')
+        board.pieces[4][2] = Piece('white', 'square', name='belt')
+        board.pieces[4][3] = Piece('white', 'round',  name='neck')
+        board.pieces[3][1] = Piece('white', 'round',  name='joint')
 
-        # black Team (Rows 5-8) 
-        board.pieces[5][0] = Piece('black', 'square')
-        board.pieces[5][1] = Piece('black', 'square')
-        board.pieces[5][2] = Piece('black', 'square')
-        board.pieces[5][3] = Piece('black', 'round')
-        board.pieces[6][1] = Piece('black', 'round')
+        # black Team (Rows 5-8)
+        board.pieces[5][0] = Piece('black', 'square', name='sleeve')
+        board.pieces[5][1] = Piece('black', 'square', name='lapel')
+        board.pieces[5][2] = Piece('black', 'square', name='belt')
+        board.pieces[5][3] = Piece('black', 'round',  name='neck')
+        board.pieces[6][1] = Piece('black', 'round',  name='joint')
         
         return GameState(board)
 
@@ -420,7 +395,7 @@ class GameState:
             'total': squares + rounds
         }
 
-    def place_piece(self, y, x, team, shape):
+    def place_piece(self, y, x, team, shape, name=None):
         """
         Place a piece during setup phase with validation.
         
@@ -429,6 +404,7 @@ class GameState:
             x: Column (0-3)
             team: 'white' or 'black'
             shape: 'square' or 'round'
+            name: The name of the piece (e.g., 'sleeve')
         
         Returns:
             tuple: (success: bool, message: str)
@@ -466,7 +442,7 @@ class GameState:
                 return False, f"{team} team already has 2 round pieces (maximum)"
         
         # Place the piece
-        self.board.pieces[y][x] = Piece(team, shape)
+        self.board.pieces[y][x] = Piece(team, shape, name=name)
         return True, f"{team} {shape} piece placed at ({y}, {x})"
 
     def remove_piece(self, y, x):

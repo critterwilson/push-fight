@@ -2,18 +2,23 @@ const BASE = '/api'
 
 async function request(url, options = {}) {
   const res = await fetch(url, options)
-  const data = await res.json()
+  let data
+  try {
+    data = await res.json()
+  } catch {
+    throw new Error(`HTTP ${res.status}: ${res.statusText || 'Server error'}`)
+  }
   if (!res.ok) {
     throw new Error(data.detail || `HTTP ${res.status}`)
   }
   return data
 }
 
-export const createGame = (mode, difficulty) =>
+export const createGame = (mode, difficulty, playerColor = 'white') =>
   request(`${BASE}/game`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode, difficulty }),
+    body: JSON.stringify({ mode, difficulty, player_color: playerColor }),
   })
 
 export const makeMove = (id, from_pos, to_pos) =>
@@ -57,3 +62,16 @@ export const askReferee = (id, question) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),
   })
+
+export const setupPlace = (id, y, x, name) =>
+  request(`${BASE}/game/${id}/setup/place`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ y, x, name }),
+  })
+
+export const setupRemove = (id, y, x) =>
+  request(`${BASE}/game/${id}/setup/${y}/${x}`, { method: 'DELETE' })
+
+export const setupConfirm = (id) =>
+  request(`${BASE}/game/${id}/setup/confirm`, { method: 'POST' })

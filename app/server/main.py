@@ -46,6 +46,7 @@ from app.server.models import (
     CreateGameRequest,
     MoveRequest,
     PushRequest,
+    SetupPlaceRequest,
 )
 from app.server.session import SessionManager
 from app.server.state_serializer import serialize_state
@@ -59,7 +60,11 @@ sessions = SessionManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Nothing to initialise at startup; RAG is lazy-loaded per session.
+    # Warm up the RAG engine in the background so it's ready before the first
+    # question arrives.  AIInterface is a singleton — the same instance is
+    # returned by every subsequent AIInterface() call.
+    from app.rag.ai_interface import AIInterface
+    AIInterface()
     yield
 
 
@@ -67,15 +72,16 @@ app = FastAPI(title="Push Fight API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tightened in production via UDS NetworkPolicy
+    # Allow the Vite dev server origin during development.
+    # For UDS/Production, restrict this regex to your specific domain (e.g. "https://.*\.uds\.dev")
+    # This is now handled by the Vite proxy for local development.
+    allow_origin_regex=".*",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve built React app when it exists (Phase 4)
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
-if os.path.isdir(_STATIC_DIR):
-    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
 
 
 # ---------------------------------------------------------------------------
@@ -108,13 +114,35 @@ def _get_session_or_404(session_id: str):
 # AI turn execution (background task)
 # ---------------------------------------------------------------------------
 
+def _random_ai_action(game) -> dict | None:
+    """Pick a random valid move or push for the current player (no-model fallback)."""
+    import random
+    from app.rl.env import PushFightEnv
+    env = PushFightEnv()
+    env.game = game
+    env.current_phase = 'move' if game.can_move() else 'push'
+    valid = env._get_valid_actions()
+    if not valid:
+        return None
+    action_idx = random.choice(valid)
+    phase, data = env._decode_action(action_idx)
+    if phase == 'move':
+        py, px, dy, dx = data
+        return {'type': 'move', 'from': (py, px), 'to': (dy, dx)}
+    if phase == 'push':
+        py, px, direction = data
+        return {'type': 'push', 'piece': (py, px), 'direction': direction}
+    return None
+
+
 async def _run_ai_turn(session_id: str) -> None:
     """
     Execute the AI player's turn step-by-step, broadcasting each action and
     the resulting state over WebSocket so the frontend can animate moves.
+    Falls back to random valid actions when no trained model is loaded.
     """
     session = sessions.get(session_id)
-    if session is None or session.agent is None:
+    if session is None:
         return
 
     game = session.game
@@ -127,9 +155,9 @@ async def _run_ai_turn(session_id: str) -> None:
         if game.game_over or game.current_player != session.ai_team:
             break
 
-        # Get next action from the RL agent
+        # Get next action from the RL agent (or random fallback if no model)
         try:
-            action = agent.get_action(game)
+            action = agent.get_action(game) if agent is not None else _random_ai_action(game)
         except Exception as e:
             await _broadcast(session_id, {"event": "error", "message": str(e)})
             break
@@ -178,7 +206,8 @@ def health():
 
 @app.post("/api/game")
 def create_game(body: CreateGameRequest):
-    session = sessions.create(mode=body.mode, difficulty=body.difficulty)
+    ai_team = "black" if body.player_color == "white" else "white"
+    session = sessions.create(mode=body.mode, difficulty=body.difficulty, ai_team=ai_team)
     return {"sessionId": session.session_id, "state": serialize_state(session)}
 
 
@@ -186,6 +215,93 @@ def create_game(body: CreateGameRequest):
 def get_game(session_id: str):
     session = _get_session_or_404(session_id)
     return {"state": serialize_state(session)}
+
+
+# --- Setup phase ------------------------------------------------------------
+
+_PIECE_SHAPES = {
+    "sleeve": "square", "lapel": "square", "belt": "square",
+    "neck": "round", "joint": "round",
+}
+_SETUP_ROSTER = [
+    ("sleeve", "square"), ("lapel", "square"), ("belt", "square"),
+    ("neck", "round"), ("joint", "round"),
+]
+
+
+def _auto_place(game, team: str) -> None:
+    """Randomly fill a team's half with the full piece roster."""
+    import random
+    valid = [
+        (y, x) for y in range(10) for x in range(4)
+        if game._is_on_player_side(y, team) and game._is_playable_space(y, x)
+    ]
+    random.shuffle(valid)
+    for (name, shape), (y, x) in zip(_SETUP_ROSTER, valid):
+        game.place_piece(y, x, team, shape, name)
+
+
+@app.post("/api/game/{session_id}/setup/place")
+async def setup_place(session_id: str, body: SetupPlaceRequest):
+    session = _get_session_or_404(session_id)
+    game = session.game
+    if not game.setup_mode:
+        raise HTTPException(status_code=400, detail="Game is not in setup mode")
+    shape = _PIECE_SHAPES.get(body.name)
+    if shape is None:
+        raise HTTPException(status_code=400, detail=f"Unknown piece name: {body.name}")
+    success, message = game.place_piece(body.y, body.x, game.current_player, shape, body.name)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    state = serialize_state(session)
+    await _broadcast(session_id, {"event": "state_update", "state": state})
+    return {"success": True, "state": state}
+
+
+@app.delete("/api/game/{session_id}/setup/{y}/{x}")
+async def setup_remove(session_id: str, y: int, x: int):
+    session = _get_session_or_404(session_id)
+    game = session.game
+    if not game.setup_mode:
+        raise HTTPException(status_code=400, detail="Game is not in setup mode")
+    success, message = game.remove_piece(y, x)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    state = serialize_state(session)
+    await _broadcast(session_id, {"event": "state_update", "state": state})
+    return {"success": True, "state": state}
+
+
+@app.post("/api/game/{session_id}/setup/confirm")
+async def setup_confirm(session_id: str):
+    session = _get_session_or_404(session_id)
+    game = session.game
+    if not game.setup_mode:
+        raise HTTPException(status_code=400, detail="Game is not in setup mode")
+
+    confirming_player = game.current_player
+    valid, error = game._validate_team_placement(confirming_player)
+    if not valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    if session.mode == "pvai":
+        # Human confirmed → auto-place AI's half and start
+        _auto_place(game, session.ai_team)
+        game.start_game()
+    elif confirming_player == "white":
+        # PvP — hand over to black for placement (bypass switch_turn which requires a push)
+        game.current_player = "black"
+    else:
+        # Black confirms in PvP — start game
+        game.start_game()
+
+    state = serialize_state(session)
+    await _broadcast(session_id, {"event": "state_update", "state": state})
+
+    if state.get("isAiTurn"):
+        asyncio.create_task(_run_ai_turn(session_id))
+
+    return {"success": True, "state": state}
 
 
 # --- Actions ----------------------------------------------------------------
@@ -348,17 +464,18 @@ async def ask_referee(session_id: str, body: AskRequest):
     """
     session = _get_session_or_404(session_id)
 
+    # Capture the running loop now (we're on it); the callback runs in a
+    # background thread where asyncio.get_event_loop() raises RuntimeError.
+    loop = asyncio.get_running_loop()
+
     def _callback(answer: str) -> None:
-        # Schedule the broadcast back on the event loop from the RAG thread
-        asyncio.get_event_loop().call_soon_threadsafe(
+        loop.call_soon_threadsafe(
             lambda: asyncio.create_task(
                 _broadcast(session_id, {"event": "rag_answer", "answer": answer})
             )
         )
 
-    # Lazy-import to avoid pulling heavy ML deps at startup
     from app.rag.ai_interface import AIInterface
-
     ai = AIInterface()
     ai.ask_question(session.game, body.question, _callback)
 
@@ -371,12 +488,11 @@ async def ask_referee(session_id: str, body: AskRequest):
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    await websocket.accept()
     session = sessions.get(session_id)
     if session is None:
         await websocket.close(code=4004)
         return
-
-    await websocket.accept()
     session.websockets.append(websocket)
 
     # Send the current state immediately on connect
@@ -394,3 +510,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     finally:
         if websocket in session.websockets:
             session.websockets.remove(websocket)
+
+
+# ---------------------------------------------------------------------------
+# Static files — mounted LAST so API routes take priority
+# ---------------------------------------------------------------------------
+
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")

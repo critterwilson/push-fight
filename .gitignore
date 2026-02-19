@@ -111,3 +111,9 @@ Thumbs.db
 # Frontend build output
 frontend/dist/
 frontend/node_modules/
+
+# Ollama models for air-gapped Zarf data injection (multi-GB)
+ollama-models/
+
+# Zarf/UDS build artifacts
+*.tar.zst
