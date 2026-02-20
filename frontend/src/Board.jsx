@@ -135,7 +135,7 @@ export function Board({
 
       {/* Centre line — vertical divider between rows 4 and 5 (after transposition) */}
       <line
-        x1={4.5 * CELL} y1={0} x2={4.5 * CELL} y2={H}
+        x1={5 * CELL} y1={0} x2={5 * CELL} y2={H}
         stroke={C.centerLine} strokeWidth={2} strokeDasharray="6 4"
         pointerEvents="none"
         aria-hidden="true"

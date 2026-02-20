@@ -114,3 +114,5 @@ ollama-models/
 
 # Zarf/UDS build artifacts
 *.tar.zst
+
+.claude/

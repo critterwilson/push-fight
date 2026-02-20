@@ -640,18 +640,29 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// --- Auto-load if benchmark_results.json is in the same directory ---
-// (won't work from file:// but works from a local server)
+// --- Auto-load benchmark_results.json from the same directory ---
+function autoLoad(data) {
+  DATA = data;
+  MODELS = [...new Set(DATA.map(r => r.model))];
+  loadArea.style.display = 'none';
+  dashboard.classList.add('active');
+  render();
+}
+
+// Try fetch first (works from HTTP servers), then XHR fallback (works from file://)
 fetch('benchmark_results.json')
   .then(r => r.ok ? r.json() : Promise.reject())
-  .then(data => {
-    DATA = data;
-    MODELS = [...new Set(DATA.map(r => r.model))];
-    loadArea.style.display = 'none';
-    dashboard.classList.add('active');
-    render();
-  })
-  .catch(() => {}); // Silently fail — user can load manually
+  .then(autoLoad)
+  .catch(() => {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', 'benchmark_results.json', false);
+      xhr.send();
+      if (xhr.status === 200 || xhr.status === 0) {
+        autoLoad(JSON.parse(xhr.responseText));
+      }
+    } catch(_) {} // User can still load manually via drag-and-drop
+  });
 </script>
 </body>
 </html>
