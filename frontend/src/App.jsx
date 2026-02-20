@@ -1,3 +1,21 @@
+/**
+ * App — Root component for Push Fight: BJJ Edition.
+ *
+ * Composes the full application layout:
+ *   - Header with title, connection status, theme toggle, voice control,
+ *     referee chat toggle, and "How to Play" tutorial.
+ *   - Main game area with the SVG board and side panel (status bar,
+ *     game controls, optional chat panel).
+ *   - New Game modal (shown on first load and on demand).
+ *   - Tutorial modal explaining the rules.
+ *   - Footer with the Unicorn Delivery Service mascot.
+ *
+ * State management is delegated to the useGame() hook, which handles
+ * all API calls, WebSocket communication, and game state updates.
+ * Voice control is handled by the useVoiceControl() hook, which
+ * integrates the Web Speech API with the game actions.
+ */
+
 import { useState } from 'react'
 import ThemeToggle from './ThemeToggle'
 import { useGame } from './useGame'
@@ -7,12 +25,15 @@ import { StatusBar } from './StatusBar'
 import { GameControls } from './GameControls'
 import { ChatPanel } from './ChatPanel'
 import { ErrorBoundary } from './ErrorBoundary'
+import { TutorialModal } from './TutorialModal'
 
 export default function App() {
   const game       = useGame()
-  const [showModal, setShowModal] = useState(true)
-  const [showChat, setShowChat]   = useState(false)
+  const [showModal, setShowModal]       = useState(true)   // New Game dialog
+  const [showChat, setShowChat]         = useState(false)  // Referee chat panel
+  const [showTutorial, setShowTutorial] = useState(false)  // How to Play overlay
 
+  // Voice control integration — maps spoken commands to game actions
   const voice = useVoiceControl({
     gameState:    game.gameState,
     sessionId:    game.sessionId,
@@ -21,6 +42,7 @@ export default function App() {
     onSkipMoves:  game.skipMoves,
   })
 
+  /** Handle the "Start Game" action from the New Game modal. */
   const handleStart = async (mode, difficulty, playerColor) => {
     await game.createGame(mode, difficulty, playerColor)
     setShowModal(false)
@@ -28,6 +50,7 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* ─── Header ─── */}
       <header className="app-header">
         <div className="app-title-wrap">
           <h1 className="app-title">Push Fight</h1>
@@ -35,6 +58,14 @@ export default function App() {
         </div>
         <div className="header-actions">
           <ThemeToggle />
+          <button
+            className="btn btn-ghost btn-small"
+            onClick={() => setShowTutorial(true)}
+            aria-label="How to play"
+          >
+            How to Play
+          </button>
+          {/* Session-specific controls only shown when a game is active */}
           {game.sessionId && (
             <>
               {voice.isSupported && (
@@ -67,7 +98,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Voice command feedback */}
+      {/* Voice command feedback toast */}
       {voice.lastCommand && (
         <div
           className={`voice-status voice-status--${voice.lastCommand.status}`}
@@ -81,7 +112,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Error toast */}
+      {/* Error toast — auto-dismissed after 3.5 seconds */}
       {game.error && (
         <div className="error-toast" role="alert" aria-live="assertive">
           {game.error}
@@ -91,7 +122,7 @@ export default function App() {
       <ErrorBoundary>
         {game.gameState ? (
           <main className="game-layout">
-            {/* Board */}
+            {/* Board section — SVG game board with wood-texture wrapper */}
             <section className="board-panel" aria-label="Game board">
               <div className="board-wrap">
                 <Board
@@ -109,7 +140,7 @@ export default function App() {
               <BoardLegend />
             </section>
 
-            {/* Side panel */}
+            {/* Side panel — status, controls, optional chat */}
             <aside className="side-panel" aria-label="Game controls">
               <StatusBar gameState={game.gameState} aiThinking={game.aiThinking} />
               <GameControls
@@ -138,12 +169,17 @@ export default function App() {
         )}
       </ErrorBoundary>
 
-      {/* New Game modal */}
+      {/* New Game modal — shown on first load and when explicitly opened */}
       {showModal && (
         <NewGameModal
           onStart={handleStart}
           onClose={game.sessionId ? () => setShowModal(false) : null}
         />
+      )}
+
+      {/* Tutorial modal — rules explanation */}
+      {showTutorial && (
+        <TutorialModal onClose={() => setShowTutorial(false)} />
       )}
 
       <footer className="app-footer">
@@ -155,9 +191,13 @@ export default function App() {
 }
 
 // ---------------------------------------------------------------------------
-// Connection status pip
+// ConnectionPip — small colored dot indicating WebSocket connection status
 // ---------------------------------------------------------------------------
 
+/**
+ * Renders a small status indicator dot next to the app title.
+ * States: 'idle' (grey), 'connected' (green), 'disconnected' (red/pulsing).
+ */
 function ConnectionPip({ status }) {
   const label = {
     idle:         'Not connected',
@@ -175,9 +215,18 @@ function ConnectionPip({ status }) {
 }
 
 // ---------------------------------------------------------------------------
-// New Game Modal
+// NewGameModal — game configuration dialog
 // ---------------------------------------------------------------------------
 
+/**
+ * Modal dialog for configuring a new game:
+ *   - Game mode: PvP or PvAI
+ *   - Player color (PvAI only): White or Black
+ *   - AI difficulty (PvAI only): Easy, Medium, Hard
+ *
+ * The modal is dismissible (via Escape or clicking outside) only when
+ * a game session already exists (onClose is non-null).
+ */
 function NewGameModal({ onStart, onClose }) {
   const [mode, setMode]             = useState('pvp')
   const [difficulty, setDiff]       = useState('medium')
@@ -215,6 +264,7 @@ function NewGameModal({ onStart, onClose }) {
         </div>
 
         <div className="modal-body">
+          {/* Game mode selection */}
           <label className="field-label">Game mode</label>
           <div className="radio-group" role="radiogroup" aria-label="Game mode">
             {[['pvp', 'Player vs Player'], ['pvai', 'Player vs AI']].map(([val, label]) => (
@@ -226,6 +276,7 @@ function NewGameModal({ onStart, onClose }) {
             ))}
           </div>
 
+          {/* AI-specific options (shown only in PvAI mode) */}
           {mode === 'pvai' && (
             <>
               <label className="field-label">Play as</label>
@@ -272,9 +323,10 @@ function NewGameModal({ onStart, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
-// Board legend
+// BoardLegend — visual key showing piece shapes, colors, and anchor marker
 // ---------------------------------------------------------------------------
 
+/** Renders a compact legend bar below the board explaining piece types. */
 function BoardLegend() {
   const items = [
     { color: '#f0e8d8', stroke: '#b89a60', shape: 'square', label: 'Sleeve / Lapel / Belt' },

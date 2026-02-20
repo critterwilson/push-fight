@@ -1,4 +1,32 @@
-"""Comprehensive tests for game engine components."""
+"""
+Comprehensive tests for the Push Fight game engine components.
+
+This module exercises the three core engine layers in isolation and in
+combination:
+
+  1. **Piece** (app.engine.pieces) — creation, serialization/deserialization,
+     the `name` field added for voice-control, and backward-compatibility
+     with saves that predate the name field.
+
+  2. **PushFightBoard** (app.engine.board) — grid layout, kill-zone mapping,
+     BFS-based valid-move computation, push-chain resolution, and
+     board-level serialization round-trips.
+
+  3. **GameState** (app.engine.game_state) — turn flow (move + push + switch),
+     push mechanics (anchors, kill-zone eliminations, win conditions),
+     has_legal_push detection, setup mode, full-turn cycles, serialization,
+     edge-case regressions, and piece-name assignment for voice control.
+
+Testing strategy:
+  - Each engine layer has its own test class so failures pinpoint the
+    responsible component immediately.
+  - Push mechanics are tested from simple (single piece, empty space) to
+    complex (chains, kill-zone elimination, anchor blocking) to ensure
+    incremental correctness.
+  - Edge-case / regression tests guard against previously fixed bugs
+    (e.g., pushing your own piece into a kill zone, anchor position
+    after a kill-zone push).
+"""
 
 import pytest
 from app.engine.pieces import Piece
@@ -11,7 +39,15 @@ from app.engine.game_state import GameState
 # ============================================================
 
 class TestPiece:
+    """Tests for the Piece data model.
+
+    Validates construction, string representation, serialization round-trips,
+    and the `name` field that was added to support voice-control commands.
+    """
+
     def test_piece_creation(self):
+        """Verify that a newly constructed Piece stores team, shape, and the
+        derived is_square flag correctly for both square and round variants."""
         ws = Piece('white', 'square')
         assert ws.team == 'white'
         assert ws.shape == 'square'
@@ -23,10 +59,14 @@ class TestPiece:
         assert br.is_square is False
 
     def test_piece_repr(self):
+        """The repr should be a concise two-character code (team initial + shape
+        initial) used for debug logging and board dumps."""
         assert repr(Piece('white', 'square')) == 'WS'
         assert repr(Piece('black', 'round')) == 'BR'
 
     def test_piece_serialization_roundtrip(self):
+        """to_dict -> from_dict must reconstruct an identical Piece, ensuring
+        game saves preserve piece identity faithfully."""
         piece = Piece('black', 'square')
         restored = Piece.from_dict(piece.to_dict())
         assert restored.team == 'black'
@@ -34,6 +74,8 @@ class TestPiece:
         assert restored.is_square is True
 
     def test_piece_from_dict_none(self):
+        """from_dict(None) represents an empty cell — must return None rather
+        than raising, since the board serialization uses None for empty squares."""
         assert Piece.from_dict(None) is None
 
     # ------------------------------------------------------------------
@@ -41,26 +83,34 @@ class TestPiece:
     # ------------------------------------------------------------------
 
     def test_piece_name_defaults_to_none(self):
+        """When no name is supplied, the field should default to None so that
+        legacy code that doesn't use voice control is unaffected."""
         piece = Piece('white', 'square')
         assert piece.name is None
 
     def test_piece_name_stored(self):
+        """The optional name kwarg should be stored and accessible on the instance."""
         piece = Piece('white', 'square', name='sleeve')
         assert piece.name == 'sleeve'
 
     def test_piece_serialization_includes_name(self):
+        """to_dict must include the 'name' key so the frontend can render piece
+        labels and the voice-control system can look up pieces by name."""
         piece = Piece('white', 'square', name='lapel')
         d = piece.to_dict()
         assert 'name' in d
         assert d['name'] == 'lapel'
 
     def test_piece_name_roundtrip(self):
+        """The name field must survive a full serialize/deserialize cycle so
+        that saved games retain voice-control piece identifiers."""
         piece = Piece('black', 'round', name='neck')
         restored = Piece.from_dict(piece.to_dict())
         assert restored.name == 'neck'
 
     def test_piece_from_dict_missing_name_is_backward_compatible(self):
-        """Pieces saved before the name field was added should load without error."""
+        """Pieces saved before the name field was added should load without error.
+        This guards against breaking old save files when the schema evolves."""
         old_data = {'team': 'white', 'shape': 'square'}  # no 'name' key
         restored = Piece.from_dict(old_data)
         assert restored.name is None
@@ -71,7 +121,24 @@ class TestPiece:
 # ============================================================
 
 class TestBoard:
+    """Tests for the PushFightBoard grid structure and movement logic.
+
+    The Push Fight board is a 10-row x 4-column grid with:
+      - Kill zones (grid value -1): rows 0 and 9 entirely, plus specific edge
+        cells on rows 1, 2, 7, and 8.
+      - Playable spaces (grid value 0): all of rows 3-6, plus interior cells
+        of rows 1, 2, 7, and 8.
+
+    Movement uses BFS (breadth-first search) to find all reachable squares
+    through orthogonal adjacency, blocked by other pieces and kill zones.
+    Push chains resolve linearly in one direction, potentially pushing
+    the last piece off the board into a kill zone or off a side rail.
+    """
+
     def test_board_dimensions(self):
+        """A fresh board must be exactly 10 rows by 4 columns for both the
+        grid (terrain map) and the pieces (occupant map). This is the canonical
+        Push Fight board size."""
         board = PushFightBoard()
         assert len(board.grid) == 10
         assert all(len(row) == 4 for row in board.grid)
@@ -109,6 +176,9 @@ class TestBoard:
         assert board.grid[2][2] == 0
 
     def test_is_on_board_boundaries(self):
+        """is_on_board must return True for every cell within the 10x4 grid
+        and False for anything outside. Cells outside the grid represent side
+        rails — pushes into side rails are blocked, not eliminations."""
         board = PushFightBoard()
         # Valid positions
         assert board.is_on_board(0, 0) is True
@@ -120,6 +190,10 @@ class TestBoard:
         assert board.is_on_board(0, 4) is False
 
     def test_is_kill_zone(self):
+        """is_kill_zone must correctly identify cells where a pushed piece is
+        eliminated (grid value -1). Crucially, out-of-bounds coordinates are
+        side rails, NOT kill zones — the distinction determines whether a push
+        is blocked or results in a piece removal."""
         board = PushFightBoard()
         assert board.is_kill_zone(0, 0) is True
         assert board.is_kill_zone(9, 3) is True
@@ -128,11 +202,17 @@ class TestBoard:
         assert board.is_kill_zone(10, 0) is False
 
     def test_get_piece_out_of_bounds(self):
+        """Querying a piece at an out-of-bounds coordinate must return the
+        sentinel string 'OUT_OF_BOUNDS' rather than None or raising. This
+        sentinel is used by push-chain logic to distinguish side rails from
+        empty playable cells."""
         board = PushFightBoard()
         assert board.get_piece(10, 0) == "OUT_OF_BOUNDS"
         assert board.get_piece(-1, 0) == "OUT_OF_BOUNDS"
 
     def test_is_occupied(self):
+        """is_occupied must detect piece presence on valid cells and gracefully
+        return False for out-of-bounds coordinates (no crash, no false positive)."""
         board = PushFightBoard()
         board.pieces[4][0] = Piece('white', 'square')
         assert board.is_occupied(4, 0) is True
@@ -182,7 +262,8 @@ class TestBoard:
         assert (5, 2) not in moves
 
     def test_get_push_chain_single_piece(self):
-        """Pushing a single piece with no others in the line."""
+        """Pushing a single piece with no others in the line should yield a
+        one-element chain and a landing position one step in the push direction."""
         board = PushFightBoard()
         board.pieces[5][1] = Piece('white', 'square')
         chain, landing = board.get_push_chain(5, 1, 1, 0)  # push down
@@ -190,7 +271,9 @@ class TestBoard:
         assert landing == (6, 1)
 
     def test_get_push_chain_multiple_pieces(self):
-        """Chain of multiple pieces."""
+        """When multiple pieces are lined up in the push direction, the chain
+        must include all of them in order, and the landing must be the first
+        empty cell beyond the chain."""
         board = PushFightBoard()
         board.pieces[4][1] = Piece('white', 'square')
         board.pieces[5][1] = Piece('black', 'square')
@@ -201,7 +284,8 @@ class TestBoard:
         assert landing == (7, 1)
 
     def test_get_push_chain_to_edge(self):
-        """Chain that would push last piece off the board."""
+        """A chain whose last piece lands in a kill zone. The landing coordinate
+        (9,2) is on the board but is a kill zone — the piece will be eliminated."""
         board = PushFightBoard()
         board.pieces[8][2] = Piece('white', 'square')
         chain, landing = board.get_push_chain(8, 2, 1, 0)  # push down
@@ -209,7 +293,10 @@ class TestBoard:
         assert landing == (9, 2)  # Kill zone
 
     def test_get_push_chain_side_rail(self):
-        """Chain going off the side rail (out of 10x4 array)."""
+        """A push that would send a piece off the side of the 10x4 grid. The
+        landing (4,4) is out of bounds — this represents a side rail collision,
+        which should be rejected at the GameState level (pushes into side rails
+        are illegal)."""
         board = PushFightBoard()
         board.pieces[4][3] = Piece('white', 'square')
         chain, landing = board.get_push_chain(4, 3, 0, 1)  # push right
@@ -217,6 +304,9 @@ class TestBoard:
         assert landing == (4, 4)  # Out of bounds - side rail
 
     def test_board_serialization_roundtrip(self):
+        """Full board state — grid terrain, piece positions, and anchor
+        position — must survive a to_dict/from_dict round-trip identically.
+        This is critical for save/load and for sending state over WebSocket."""
         board = PushFightBoard()
         board.pieces[4][0] = Piece('white', 'square')
         board.pieces[5][2] = Piece('black', 'round')
@@ -235,7 +325,17 @@ class TestBoard:
 # ============================================================
 
 class TestGameStateTurnFlow:
+    """Tests for the turn lifecycle within a single player's turn.
+
+    Each turn in Push Fight follows the sequence: up to 2 optional moves,
+    then exactly 1 mandatory push, then switch_turn(). These tests verify
+    the state transitions (moves_made, push_completed, current_player)
+    and the guards (can_move, can_push) that enforce the turn rules.
+    """
+
     def test_initial_state(self):
+        """A fresh game must start with white to move, zero moves made, no push
+        completed, game not over, no winner, and not in setup mode."""
         game = GameState.create_initial_game()
         assert game.current_player == 'white'
         assert game.moves_made == 0
@@ -245,23 +345,32 @@ class TestGameStateTurnFlow:
         assert game.setup_mode is False
 
     def test_can_move_initial(self):
+        """At the start of a turn, both moving and pushing should be allowed
+        (the player may skip moves and push immediately)."""
         game = GameState.create_initial_game()
         assert game.can_move() is True
         assert game.can_push() is True
 
     def test_can_move_after_two_moves(self):
+        """After exhausting 2 moves, the player can no longer move but must
+        still push. This enforces the Push Fight rule that each turn ends
+        with exactly one push."""
         game = GameState.create_initial_game()
         game.moves_made = 2
         assert game.can_move() is False
         assert game.can_push() is True  # Still need to push
 
     def test_can_move_after_push(self):
+        """Once the push is completed, neither moving nor pushing is allowed —
+        the turn is over and switch_turn() must be called."""
         game = GameState.create_initial_game()
         game.push_completed = True
         assert game.can_move() is False
         assert game.can_push() is False
 
     def test_switch_turn(self):
+        """switch_turn must flip the current player, reset moves_made to 0,
+        and clear push_completed so the new player starts a fresh turn."""
         game = GameState.create_initial_game()
         game.push_completed = True
         game.moves_made = 1
@@ -271,6 +380,8 @@ class TestGameStateTurnFlow:
         assert game.push_completed is False
 
     def test_switch_turn_back_to_white(self):
+        """Two consecutive switch_turn calls should cycle back to white,
+        confirming the alternation works correctly over multiple rounds."""
         game = GameState.create_initial_game()
         game.push_completed = True
         game.switch_turn()
@@ -280,11 +391,15 @@ class TestGameStateTurnFlow:
         assert game.current_player == 'white'
 
     def test_switch_turn_requires_push(self):
+        """Attempting to switch turns without completing a push must raise
+        ValueError — this enforces the mandatory push rule."""
         game = GameState.create_initial_game()
         with pytest.raises(ValueError):
             game.switch_turn()
 
     def test_piece_counts_initial(self):
+        """The initial game must have exactly 3 squares and 2 rounds per team
+        (10 pieces total). These counts are used for win-condition checks."""
         game = GameState.create_initial_game()
         assert game.count_square_pieces('white') == 3
         assert game.count_round_pieces('white') == 2
@@ -299,6 +414,15 @@ class TestGameStateTurnFlow:
 # ============================================================
 
 class TestGameStateMovement:
+    """Tests for the BFS-based piece movement system.
+
+    In Push Fight, pieces slide through any number of connected empty,
+    playable cells via orthogonal (non-diagonal) adjacency. Pieces block
+    passage, and kill zones are unreachable by movement (only by pushing).
+    These tests verify reachability, blocking, and the absence of diagonal
+    movement.
+    """
+
     def test_white_piece_can_reach_empty_space(self):
         """In initial position, white pieces should have valid moves."""
         game = GameState.create_initial_game()
@@ -338,6 +462,18 @@ class TestGameStateMovement:
 # ============================================================
 
 class TestPushMechanics:
+    """Tests for the push action — the core mechanic of Push Fight.
+
+    Only square pieces may push. A push shoves a line of adjacent pieces
+    one cell in a cardinal direction. Key rules tested here:
+      - Only the current player's square pieces can initiate a push.
+      - Pushes into side rails (out of bounds) are blocked.
+      - Pushes into kill zones eliminate the piece and may trigger a win.
+      - Anchors block entire push chains.
+      - The anchor is placed at the pusher's final position after a push.
+      - Win conditions: 1 round piece lost OR 2 square pieces lost.
+    """
+
     def test_push_requires_square_piece(self):
         """Only square pieces can push."""
         game = GameState.create_initial_game()
@@ -368,9 +504,10 @@ class TestPushMechanics:
         assert game.board.get_piece(4, 0) is not None
 
     def test_push_single_piece_into_empty(self):
-        """Push a single piece into empty space."""
+        """The simplest push case: a lone square piece pushes into an adjacent
+        empty cell. Verifies the piece relocates and push_completed is set."""
         game = GameState.create_initial_game()
-        # Move some pieces to create space. Let's use a simpler setup.
+        # Use a minimal board to isolate the push behavior.
         board = PushFightBoard()
         board.pieces[5][1] = Piece('white', 'square')
         game = GameState(board)
@@ -384,7 +521,9 @@ class TestPushMechanics:
         assert game.board.get_piece(6, 1).team == 'white'
 
     def test_push_chain_into_empty(self):
-        """Push a chain of pieces into empty space."""
+        """Pushing a square into an adjacent opponent piece should shove both
+        pieces one cell forward. Validates multi-piece chain resolution where
+        the landing cell is empty."""
         board = PushFightBoard()
         board.pieces[4][1] = Piece('white', 'square')
         board.pieces[5][1] = Piece('black', 'square')
@@ -399,7 +538,8 @@ class TestPushMechanics:
         assert game.board.get_piece(6, 1).team == 'black'
 
     def test_push_into_kill_zone_removes_piece(self):
-        """Pushing a piece into a kill zone removes it from the board."""
+        """When the end of a push chain lands in a kill zone, the last piece
+        must be removed from the board and the elimination counter incremented."""
         board = PushFightBoard()
         board.pieces[8][1] = Piece('white', 'square')
         board.pieces[8][2] = Piece('black', 'round')
@@ -413,7 +553,8 @@ class TestPushMechanics:
         assert game.pieces_pushed_off['black']['rounds'] == 1
 
     def test_push_into_kill_zone_triggers_win(self):
-        """Pushing a round piece off triggers immediate win."""
+        """Losing a round piece is an instant loss. Verify that pushing an
+        opponent round piece into a kill zone sets game_over and winner."""
         board = PushFightBoard()
         board.pieces[8][1] = Piece('white', 'square')
         board.pieces[8][2] = Piece('black', 'round')
@@ -425,7 +566,8 @@ class TestPushMechanics:
         assert game.winner == 'white'  # Black lost a round piece
 
     def test_two_squares_off_loses(self):
-        """Losing 2 square pieces should trigger loss."""
+        """A player can survive losing 1 square piece, but losing a 2nd must
+        trigger a loss. This tests the cumulative elimination threshold."""
         board = PushFightBoard()
         game = GameState(board)
         # Manually set up state: black already lost 1 square
@@ -489,7 +631,8 @@ class TestPushMechanics:
         assert game.board.get_piece(6, 1).shape == 'round'
 
     def test_push_sets_push_completed(self):
-        """A successful push sets push_completed to True."""
+        """A successful push must mark push_completed=True so the turn-flow
+        system knows the player has fulfilled their push obligation."""
         board = PushFightBoard()
         board.pieces[5][1] = Piece('white', 'square')
         game = GameState(board)
@@ -499,7 +642,8 @@ class TestPushMechanics:
         assert game.push_completed is True
 
     def test_failed_push_does_not_set_push_completed(self):
-        """A failed push should not set push_completed."""
+        """A blocked push (e.g., into a side rail) must NOT count as the turn's
+        push. The player must attempt another push direction to complete the turn."""
         game = GameState.create_initial_game()
         # Push into side rail
         game.perform_push(4, 0, (0, -1))
@@ -541,19 +685,31 @@ class TestPushMechanics:
 # ============================================================
 
 class TestHasLegalPush:
+    """Tests for the has_legal_push() predicate.
+
+    This method is used by the RL environment and the server to determine
+    whether the current player has at least one valid push available.
+    If not, the game may need to end (stalemate) or the environment
+    must handle the edge case. The method must check every square piece
+    of the current player in all four cardinal directions.
+    """
+
     def test_initial_position_has_legal_push(self):
-        """Initial position should have legal pushes for white."""
+        """The standard initial layout always has legal push options for white
+        because pieces of both teams are adjacent on the center rows."""
         game = GameState.create_initial_game()
         assert game.has_legal_push() is True
 
     def test_has_legal_push_black(self):
-        """Black should also have legal pushes from initial position."""
+        """Symmetry check: black should also have legal pushes from the initial
+        position. This ensures the method respects current_player correctly."""
         game = GameState.create_initial_game()
         game.current_player = 'black'
         assert game.has_legal_push() is True
 
     def test_no_square_pieces_no_push(self):
-        """If a player has no square pieces, they have no legal push."""
+        """Only square pieces can push. A player who has only round pieces
+        remaining has no legal push and the game should detect a stalemate."""
         board = PushFightBoard()
         board.pieces[5][0] = Piece('white', 'round')
         board.pieces[5][1] = Piece('white', 'round')
@@ -561,7 +717,9 @@ class TestHasLegalPush:
         assert game.has_legal_push() is False
 
     def test_single_piece_surrounded_by_rails(self):
-        """A single square piece pushed against all side rails has no push."""
+        """A square piece at the left edge has the side rail blocking one
+        direction, but the other three directions are open. Verify that at
+        least one valid push exists despite the partial rail constraint."""
         board = PushFightBoard()
         # Place at (4,0) - left side is off-board (side rail), but can push right/up/down
         board.pieces[4][0] = Piece('white', 'square')
@@ -575,6 +733,14 @@ class TestHasLegalPush:
 # ============================================================
 
 class TestFullTurnFlow:
+    """End-to-end tests for complete turn sequences.
+
+    These tests exercise the full move-push-switch lifecycle, verifying
+    that 0, 1, or 2 optional moves followed by a mandatory push correctly
+    transition the game to the next player. Also tests that double-pushing
+    is disallowed and that a two-turn cycle (white then black) works.
+    """
+
     def test_zero_moves_then_push(self):
         """Player can push immediately without making any moves."""
         board = PushFightBoard()
@@ -627,7 +793,8 @@ class TestFullTurnFlow:
         assert game.current_player == 'black'
 
     def test_cannot_push_twice(self):
-        """After pushing, push_completed is True and can't push again."""
+        """A player gets exactly one push per turn. After a successful push,
+        can_push() must return False to prevent a second push."""
         board = PushFightBoard()
         board.pieces[5][1] = Piece('white', 'square')
         game = GameState(board)
@@ -637,7 +804,8 @@ class TestFullTurnFlow:
         assert game.can_push() is False
 
     def test_complete_two_turn_cycle(self):
-        """White pushes, then black pushes."""
+        """Full round: white pushes then switches, black pushes then switches
+        back to white. Validates the alternation over a complete cycle."""
         board = PushFightBoard()
         board.pieces[5][1] = Piece('white', 'square')
         board.pieces[4][1] = Piece('black', 'square')
@@ -660,26 +828,46 @@ class TestFullTurnFlow:
 # ============================================================
 
 class TestSetupMode:
+    """Tests for custom game setup (piece placement phase).
+
+    In setup mode, players manually place their 5 pieces (3 square, 2 round)
+    on their respective halves of the board. These tests verify:
+      - Correct/wrong side enforcement (white rows 1-4, black rows 5-8).
+      - Kill-zone placement rejection.
+      - Per-shape piece count limits (max 3 squares, max 2 rounds).
+      - Occupied cell rejection.
+      - The transition from setup to play requires all 10 pieces placed.
+      - Piece removal during setup.
+    """
+
     def test_custom_game_is_setup_mode(self):
+        """create_custom_game must initialize in setup mode so players can
+        place pieces before the game begins."""
         game = GameState.create_custom_game()
         assert game.setup_mode is True
 
     def test_place_piece_on_correct_side(self):
+        """White should be able to place on row 4 (white's half of the board)."""
         game = GameState.create_custom_game()
         success, _ = game.place_piece(4, 0, 'white', 'square')
         assert success is True
 
     def test_place_piece_on_wrong_side(self):
+        """White must NOT be able to place on row 5 (black's half). This
+        enforces the setup-phase territory rule."""
         game = GameState.create_custom_game()
         success, _ = game.place_piece(5, 0, 'white', 'square')
         assert success is False
 
     def test_place_piece_on_kill_zone(self):
+        """Pieces cannot be placed in kill zones during setup — kill zones
+        are elimination areas, not valid starting positions."""
         game = GameState.create_custom_game()
         success, _ = game.place_piece(0, 0, 'white', 'square')
         assert success is False
 
     def test_place_piece_limit_squares(self):
+        """Each team may only place 3 square pieces. Attempting a 4th must fail."""
         game = GameState.create_custom_game()
         for i in range(3):
             game.place_piece(4, i, 'white', 'square')
@@ -687,6 +875,7 @@ class TestSetupMode:
         assert success is False
 
     def test_place_piece_limit_rounds(self):
+        """Each team may only place 2 round pieces. Attempting a 3rd must fail."""
         game = GameState.create_custom_game()
         game.place_piece(4, 0, 'white', 'round')
         game.place_piece(4, 1, 'white', 'round')
@@ -694,24 +883,30 @@ class TestSetupMode:
         assert success is False
 
     def test_cannot_place_on_occupied(self):
+        """Placing a piece on an already-occupied cell must be rejected,
+        even during setup mode."""
         game = GameState.create_custom_game()
         game.place_piece(4, 0, 'white', 'square')
         success, _ = game.place_piece(4, 0, 'white', 'round')
         assert success is False
 
     def test_start_game_requires_full_placement(self):
+        """The game cannot start until all 10 pieces (5 per team) are placed.
+        An empty board must fail the can_start_game check."""
         game = GameState.create_custom_game()
         can_start, _ = game.can_start_game()
         assert can_start is False
 
     def test_start_game_full_placement(self):
+        """Once all 10 pieces are placed, can_start_game returns True and
+        start_game transitions out of setup mode into active play."""
         game = GameState.create_custom_game()
-        # White
+        # White: 3 squares + 2 rounds
         for i in range(3):
             game.place_piece(4, i, 'white', 'square')
         game.place_piece(3, 0, 'white', 'round')
         game.place_piece(3, 1, 'white', 'round')
-        # Black
+        # Black: 3 squares + 2 rounds
         for i in range(3):
             game.place_piece(5, i, 'black', 'square')
         game.place_piece(6, 0, 'black', 'round')
@@ -724,6 +919,8 @@ class TestSetupMode:
         assert game.setup_mode is False
 
     def test_remove_piece_in_setup(self):
+        """Players should be able to remove a previously placed piece during
+        setup, allowing them to change their mind about placement."""
         game = GameState.create_custom_game()
         game.place_piece(4, 0, 'white', 'square')
         success, _ = game.remove_piece(4, 0)
@@ -736,7 +933,17 @@ class TestSetupMode:
 # ============================================================
 
 class TestSerialization:
+    """Tests for GameState serialization/deserialization.
+
+    The game state must survive a to_dict/from_dict round-trip with all
+    fields intact. This is essential for save/load, WebSocket state
+    broadcasts, and session persistence.
+    """
+
     def test_game_state_roundtrip(self):
+        """Modify several fields (moves_made, current_player, pieces_pushed_off),
+        serialize, deserialize, and verify all values match. Also confirms that
+        piece counts on the board remain correct despite off-board tracking."""
         game = GameState.create_initial_game()
         game.moves_made = 1
         game.current_player = 'black'
@@ -755,6 +962,13 @@ class TestSerialization:
 # ============================================================
 
 class TestEdgeCases:
+    """Regression tests for edge cases and previously discovered bugs.
+
+    Each test here guards against a specific scenario that either caused
+    incorrect behavior in the past or represents a tricky corner case in
+    the game rules (e.g., pushing your own piece off, anchor clearing
+    on kill-zone pushes, side-rail detection, anchor blocking semantics).
+    """
     def test_push_own_piece_into_kill_zone(self):
         """It should be possible to push your own piece into a kill zone (bad strategy, but legal)."""
         board = PushFightBoard()
@@ -807,8 +1021,9 @@ class TestEdgeCases:
         assert game.board.get_piece(6, 1) is not None  # black round (blocked)
 
     def test_multiple_pieces_pushed_off_same_push(self):
-        """A long chain could push multiple pieces off in theory.
-        In practice on a 4-wide board this is rare, but test the tracking."""
+        """Validate the pieces_pushed_off counter and check_game_over threshold.
+        One square off is survivable; two squares off must trigger a loss.
+        Though rare on a 4-wide board, the counter logic must be correct."""
         board = PushFightBoard()
         game = GameState(board)
         # Manually track to verify counter works
@@ -826,14 +1041,25 @@ class TestEdgeCases:
 # ============================================================
 
 class TestInitialGamePieceNames:
-    """Verify that create_initial_game() assigns jiu-jitsu grip / submission names
-    to every piece and that names survive moves and serialization."""
+    """Verify that create_initial_game() assigns BJJ-themed piece names
+    (sleeve, lapel, belt, neck, joint) to every piece on the board.
+
+    These names are essential for the voice-control feature, which lets
+    players say commands like "sleeve to B4" instead of clicking. The tests
+    ensure:
+      - Each team gets exactly the expected set of names per shape.
+      - Every piece on the board has a non-None name.
+      - Names survive serialization round-trips (save/load).
+      - Names travel with pieces when they are moved to new positions.
+    """
 
     def setup_method(self):
+        """Create a fresh initial game before each test method."""
         self.game = GameState.create_initial_game()
 
     def _pieces_by_team(self, team):
-        """Return all Piece objects on the board for a given team."""
+        """Helper: scan the entire board and return all Piece objects belonging
+        to the specified team. Used to collect pieces for name assertions."""
         pieces = []
         for y in range(10):
             for x in range(4):
@@ -843,21 +1069,26 @@ class TestInitialGamePieceNames:
         return pieces
 
     def test_white_squares_are_sleeve_lapel_belt(self):
+        """White's 3 square pieces must be named sleeve, lapel, and belt."""
         squares = [p for p in self._pieces_by_team('white') if p.shape == 'square']
         names = sorted(p.name for p in squares)
         assert names == ['belt', 'lapel', 'sleeve']
 
     def test_white_rounds_are_neck_and_joint(self):
+        """White's 2 round pieces must be named neck and joint."""
         rounds = [p for p in self._pieces_by_team('white') if p.shape == 'round']
         names = sorted(p.name for p in rounds)
         assert names == ['joint', 'neck']
 
     def test_black_squares_are_sleeve_lapel_belt(self):
+        """Black gets the same set of square piece names as white (both teams
+        have identical name sets to keep voice commands symmetric)."""
         squares = [p for p in self._pieces_by_team('black') if p.shape == 'square']
         names = sorted(p.name for p in squares)
         assert names == ['belt', 'lapel', 'sleeve']
 
     def test_black_rounds_are_neck_and_joint(self):
+        """Black gets the same set of round piece names as white."""
         rounds = [p for p in self._pieces_by_team('black') if p.shape == 'round']
         names = sorted(p.name for p in rounds)
         assert names == ['joint', 'neck']

@@ -8,7 +8,7 @@ An LLM-backed referee that answers questions about the current game state and th
 |------|---------|
 | `rag_engine.py` | `PushFightRAG` — ingestion, retrieval chain, LangChain pipeline |
 | `ai_interface.py` | `AIInterface` singleton — non-blocking wrapper; runs queries in background threads |
-| `state_formatter.py` | `format_game_state()` — converts a `GameState` into a human-readable string for the LLM prompt |
+| `state_formatter.py` | `format_game_state()` — converts a `GameState` into a structured context string for the LLM prompt |
 
 ---
 
@@ -16,7 +16,7 @@ An LLM-backed referee that answers questions about the current game state and th
 
 | Component | Technology |
 |-----------|-----------|
-| LLM | Ollama (`llama3`) |
+| LLM | Ollama (`llama3` default, configurable) |
 | Embeddings | Ollama (`nomic-embed-text`) |
 | Vector store | ChromaDB |
 | Orchestration | LangChain |
@@ -31,20 +31,26 @@ An LLM-backed referee that answers questions about the current game state and th
 `PushFightRAG._initialize_vector_store()` reads `assets/rules.md` and splits it by Markdown headers using LangChain's `MarkdownHeaderTextSplitter`. The resulting chunks are embedded with `nomic-embed-text` and stored in ChromaDB.
 
 Two storage modes:
-- **Remote ChromaDB** (production/K8s): set `CHROMA_HOST` and `CHROMA_PORT` env vars → connects to the ChromaDB service; ingests on first run if the collection is empty.
+- **Remote ChromaDB** (production/K8s): set `CHROMA_HOST` and `CHROMA_PORT` env vars -> connects to the ChromaDB service; ingests on first run if the collection is empty.
 - **Local ChromaDB** (dev): stored at `./chroma_db`; created on first run, reloaded on subsequent runs.
 
 ### 2. Retrieval
 
-At query time, the question is embedded and used to retrieve the 3 most relevant rule chunks from ChromaDB (`k=3`).
+At query time, the question is embedded and used to retrieve the **5 most relevant** rule chunks from ChromaDB (`k=5`).
 
 ### 3. Generation
 
-Retrieved chunks + formatted game state + user question are assembled into a LangChain `ChatPromptTemplate` and sent to `llama3` via Ollama. The system prompt instructs the LLM to:
+Retrieved chunks + formatted game state + user question are assembled into a LangChain `ChatPromptTemplate` and sent to the LLM via Ollama.
 
-- Answer only from the provided rules and game state
-- Cite rule sections when rejecting illegal moves
-- Format output in Markdown (headings, bullet lists, bold for key terms)
+**LLM configuration:**
+- `temperature=0` — deterministic, factual answers (no creative hallucination)
+- `num_predict=300` — hard output cap prevents runaway repetitive output
+
+**System prompt** includes:
+- Game basics (piece names, shapes, rules) baked directly into the prompt so the LLM always has ground truth
+- Explicit instructions to use actual piece names (sleeve, lapel, belt, neck, joint) and never invent terms
+- Conciseness constraint (under 100 words)
+- For yes/no questions, start with "Yes" or "No" immediately
 
 ### 4. Delivery
 
@@ -67,17 +73,22 @@ ai.ask_question(game, "Can I push a round piece?", callback)
 
 ## State Formatter
 
-`format_game_state(game)` produces a compact text snapshot for the LLM prompt:
+`format_game_state(game)` produces a structured text snapshot for the LLM prompt, including:
 
+- **Phase and turn info** — current player, whether in move/push/setup/game_over phase, moves remaining
+- **Anchor** — position, which piece it's on, reminder that opponent cannot move/push it
+- **Piece inventory** — every piece per team with name, shape, and board coordinate (e.g. "sleeve (square) at A5")
+- **Eliminations** — count of square/round pieces pushed off per team
+- **Recent actions** — last 3 moves/pushes from the move log
+
+Example output:
 ```
-Current Player: white
-
-Recent Moves (3 total):
-  - {'type': 'move', 'player': 'white', ...}
-  ...
-
-Board Configuration:
-[ASCII board representation]
+Current player: white. Phase: MOVE (1 move(s) remaining, or skip to push).
+Anchor: on white's lapel at B6. Opponent cannot move or push this piece.
+White pieces: sleeve (square) at A4, lapel (square) at B6, belt (square) at C5, neck (round) at D5, joint (round) at B4.
+Black pieces: sleeve (square) at A6, lapel (square) at B7, belt (square) at C6, neck (round) at D6, joint (round) at B7.
+Eliminations: none.
+Recent actions: white moved (4, 0)->(3, 0).
 ```
 
 ---
@@ -102,3 +113,9 @@ ollama pull nomic-embed-text
 ```
 
 The vector store is built automatically on first run from `assets/rules.md`.
+
+---
+
+## Benchmarking
+
+The `benchmark/` directory at the project root tests LLM answer quality. See [benchmark/README.md](../../benchmark/README.md).

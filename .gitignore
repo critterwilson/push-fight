@@ -105,9 +105,6 @@ Thumbs.db
 *.swo
 *~
 
-# Local dev session config (not for git or deployment)
-.tmuxinator.yml
-
 # Frontend build output
 frontend/dist/
 frontend/node_modules/

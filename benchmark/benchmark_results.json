@@ -1,0 +1,265 @@
+[
+  {
+    "model": "llama3",
+    "scenario": "opening",
+    "question": "What pieces can I move right now?",
+    "category": "state",
+    "answer": "Yes. You can move the sleeve, lapel, and belt pieces.",
+    "elapsed_sec": 3.91,
+    "composite_score": 65.8,
+    "keyword_score": 0.5,
+    "keywords_found": [
+      "sleeve",
+      "lapel",
+      "belt"
+    ],
+    "keywords_missed": [
+      "white",
+      "neck",
+      "joint"
+    ],
+    "factual_correct": null,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 10
+  },
+  {
+    "model": "llama3",
+    "scenario": "opening",
+    "question": "Can I push with my neck piece?",
+    "category": "legality",
+    "answer": "No. According to the rules, only SQUARE pieces (sleeve, lapel, belt) can push. Round pieces (neck, joint) CANNOT push.",
+    "elapsed_sec": 0.86,
+    "composite_score": 96.3,
+    "keyword_score": 1.0,
+    "keywords_found": [
+      "no",
+      "round",
+      "square",
+      "cannot push"
+    ],
+    "keywords_missed": [],
+    "factual_correct": true,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 19
+  },
+  {
+    "model": "llama3",
+    "scenario": "mid_game_moved",
+    "question": "How many moves do I have left this turn?",
+    "category": "state",
+    "answer": "Yes, you have 1 move(s) remaining.",
+    "elapsed_sec": 0.63,
+    "composite_score": 64.5,
+    "keyword_score": 0.5,
+    "keywords_found": [
+      "1"
+    ],
+    "keywords_missed": [
+      "one"
+    ],
+    "factual_correct": null,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 6
+  },
+  {
+    "model": "llama3",
+    "scenario": "mid_game_moved",
+    "question": "Can I skip my remaining moves and push now?",
+    "category": "legality",
+    "answer": "Yes.",
+    "elapsed_sec": 0.19,
+    "composite_score": 70.3,
+    "keyword_score": 0.33,
+    "keywords_found": [
+      "yes"
+    ],
+    "keywords_missed": [
+      "skip",
+      "push"
+    ],
+    "factual_correct": true,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 1
+  },
+  {
+    "model": "llama3",
+    "scenario": "push_phase",
+    "question": "Can I move another piece?",
+    "category": "legality",
+    "answer": "No.",
+    "elapsed_sec": 0.46,
+    "composite_score": 66.3,
+    "keyword_score": 0.2,
+    "keywords_found": [
+      "no"
+    ],
+    "keywords_missed": [
+      "cannot",
+      "push",
+      "two moves",
+      "already"
+    ],
+    "factual_correct": true,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 1
+  },
+  {
+    "model": "llama3",
+    "scenario": "push_phase",
+    "question": "Which pieces can I use to push?",
+    "category": "state",
+    "answer": "Yes, you can use the sleeve and lapel pieces to push.",
+    "elapsed_sec": 0.45,
+    "composite_score": 66.2,
+    "keyword_score": 0.5,
+    "keywords_found": [
+      "sleeve",
+      "lapel"
+    ],
+    "keywords_missed": [
+      "square",
+      "belt"
+    ],
+    "factual_correct": null,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 11
+  },
+  {
+    "model": "llama3",
+    "scenario": "anchor_blocking",
+    "question": "Why can't I push the piece at row 5, column B?",
+    "category": "legality",
+    "answer": "No. The anchor is on white's lapel at B6, which means you cannot move or push any pieces at that location.",
+    "elapsed_sec": 1.01,
+    "composite_score": 83.2,
+    "keyword_score": 0.75,
+    "keywords_found": [
+      "anchor",
+      "cannot",
+      "push"
+    ],
+    "keywords_missed": [
+      "block"
+    ],
+    "factual_correct": null,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 21
+  },
+  {
+    "model": "llama3",
+    "scenario": "anchor_blocking",
+    "question": "What is the anchor and how does it affect me?",
+    "category": "rules",
+    "answer": "Yes. The anchor is on white's lapel at B6. As the current player, black, you cannot move or push this anchored piece.",
+    "elapsed_sec": 0.75,
+    "composite_score": 75.3,
+    "keyword_score": 0.6,
+    "keywords_found": [
+      "anchor",
+      "push",
+      "cannot move"
+    ],
+    "keywords_missed": [
+      "previous",
+      "cannot push"
+    ],
+    "factual_correct": null,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 22
+  },
+  {
+    "model": "llama3",
+    "scenario": "near_kill_zone",
+    "question": "Is black's neck piece in danger?",
+    "category": "strategy",
+    "answer": "No.",
+    "elapsed_sec": 0.44,
+    "composite_score": 25.3,
+    "keyword_score": 0.0,
+    "keywords_found": [],
+    "keywords_missed": [
+      "yes",
+      "kill zone",
+      "danger",
+      "push",
+      "row 1"
+    ],
+    "factual_correct": false,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 1
+  },
+  {
+    "model": "llama3",
+    "scenario": "near_kill_zone",
+    "question": "If I push my sleeve piece upward, what happens?",
+    "category": "strategy",
+    "answer": "No. According to the \"Pushing Rules and Restrictions\", only square pieces can push, and round pieces cannot push. Since your sleeve piece is a square piece, you can push it.",
+    "elapsed_sec": 0.92,
+    "composite_score": 56.0,
+    "keyword_score": 0.2,
+    "keywords_found": [
+      "push"
+    ],
+    "keywords_missed": [
+      "neck",
+      "kill zone",
+      "off",
+      "win"
+    ],
+    "factual_correct": null,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 30
+  },
+  {
+    "model": "llama3",
+    "scenario": "game_over",
+    "question": "Who won the game?",
+    "category": "state",
+    "answer": "Yes. The winner is black.",
+    "elapsed_sec": 0.49,
+    "composite_score": 73.3,
+    "keyword_score": 0.67,
+    "keywords_found": [
+      "black",
+      "win"
+    ],
+    "keywords_missed": [
+      "won"
+    ],
+    "factual_correct": null,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 5
+  },
+  {
+    "model": "llama3",
+    "scenario": "game_over",
+    "question": "Can I still make a move?",
+    "category": "legality",
+    "answer": "No.",
+    "elapsed_sec": 0.19,
+    "composite_score": 70.3,
+    "keyword_score": 0.33,
+    "keywords_found": [
+      "no"
+    ],
+    "keywords_missed": [
+      "over",
+      "ended"
+    ],
+    "factual_correct": true,
+    "hallucination_score": 1.0,
+    "hallucinations_found": [],
+    "word_count": 1
+  }
+]

@@ -77,38 +77,42 @@ class PushFightRAG:
             # Create new DB
             self.vector_store = ingest_docs(Chroma, persist_directory=persist_dir)
             
-        self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 3})
+        self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
 
     def _build_chain(self):
         """Constructs the RAG chain."""
         ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        llm = ChatOllama(model=self.model_name, base_url=ollama_host)
+        llm = ChatOllama(
+            model=self.model_name,
+            base_url=ollama_host,
+            temperature=0,
+            num_predict=300,
+        )
 
-        # The Prompt: Separating System (Instructions) from Human (Context + Question)
-        system_template = """You are the official AI Referee for the board game Push Fight.
-        Your job is to enforce the rules strictly and explain strategic possibilities based on the current board state.
+        system_template = """You are the AI Referee for Push Fight: BJJ Edition, a two-player board game on a 10×4 grid.
 
-        Instructions:
-        1. Answer based ONLY on the provided rules and game state.
-        2. If a move is illegal, cite the specific rule section (e.g., "Section 3: Movement Restrictions").
-        3. Be concise and authoritative.
+GAME BASICS (always true):
+- Each player has 5 pieces: 3 square pieces (sleeve, lapel, belt) and 2 round pieces (neck, joint).
+- Only SQUARE pieces (sleeve, lapel, belt) can push. Round pieces (neck, joint) CANNOT push.
+- Each turn: optionally move 0-2 pieces, then MUST push exactly once with a square piece.
+- The anchor marks the last piece that pushed. The opponent cannot move or push the anchored piece.
+- Win by pushing opponent's round piece off the board, OR pushing 2 of their square pieces off.
+- Lose if you push your own piece off, or have no legal push at the start of your turn.
 
-        Formatting — always use markdown:
-        - Use `## Heading` for distinct sections (e.g. ## Legal Moves, ## Why It's Illegal).
-        - Use bullet lists (`- item`) for any enumeration; never write lists as comma-separated prose.
-        - Use `**bold**` to highlight key terms, piece names, and rule names.
-        - Use `*italic*` for board coordinates or light emphasis.
-        - Keep each paragraph short (1-3 sentences). Prefer lists over long paragraphs.
-        - Never output a wall of unbroken text."""
+RULES:
+1. Answer ONLY from the provided rules and game state. Never invent pieces, rules, or sections.
+2. Use the actual piece names: sleeve, lapel, belt, neck, joint. Never say "Push piece" or "Player piece".
+3. When citing rules, use the section titles from the provided context (e.g., "Pushing Rules and Restrictions").
+4. Keep answers under 100 words. Be direct and factual.
+5. For yes/no questions, start with "Yes" or "No" immediately."""
 
-        human_template = """### Official Rules Context:
-        {context}
-        
-        ### Current Game State:
-        {game_state}
-        
-        ### User Question: 
-        {question}"""
+        human_template = """Rules Context:
+{context}
+
+Game State:
+{game_state}
+
+Question: {question}"""
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_template),

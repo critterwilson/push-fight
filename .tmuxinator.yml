@@ -1,0 +1,13 @@
+# Push Fight - local dev session
+# Usage: tmuxinator start -p .tmuxinator.yml
+# (Not committed to git. Not included in UDS/Zarf deployment.)
+
+name: push-fight
+root: <%= ENV['HOME'] %>/Documents/personal/push-fight-app
+
+windows:
+  - dev:
+      layout: even-horizontal
+      panes:
+        - uv run uvicorn app.server.main:app --reload --port 8000
+        - cd frontend && npm run dev

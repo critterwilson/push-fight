@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Push Fight — Model Benchmark Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242736;
+    --border: #2e3144;
+    --text: #e1e4ed;
+    --text-dim: #8b8fa3;
+    --accent: #6c8cff;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --orange: #fb923c;
+    --purple: #a78bfa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+    line-height: 1.5;
+  }
+
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  h2 { font-size: 1.1rem; color: var(--accent); margin: 24px 0 12px; }
+  h3 { font-size: 0.95rem; color: var(--text-dim); margin: 16px 0 8px; }
+
+  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 20px; }
+
+  .load-area {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    margin-bottom: 24px;
+    transition: border-color 0.2s;
+  }
+  .load-area:hover { border-color: var(--accent); }
+  .load-area input { display: none; }
+
+  .dashboard { display: none; }
+  .dashboard.active { display: block; }
+
+  /* Summary cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .card .model-name {
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .card .score-big {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .card .score-label { font-size: 0.75rem; color: var(--text-dim); }
+
+  .stats-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    font-size: 0.8rem;
+  }
+
+  .stat { display: flex; flex-direction: column; }
+  .stat-val { font-weight: 700; font-size: 0.95rem; }
+  .stat-label { color: var(--text-dim); font-size: 0.7rem; }
+
+  /* Bar charts */
+  .bar-chart { margin: 12px 0; }
+
+  .bar-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 0.8rem;
+  }
+
+  .bar-label {
+    width: 140px;
+    flex-shrink: 0;
+    text-align: right;
+    padding-right: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-dim);
+  }
+
+  .bar-track {
+    flex: 1;
+    height: 22px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--bg);
+    min-width: fit-content;
+  }
+
+  .bar-value {
+    width: 60px;
+    text-align: right;
+    flex-shrink: 0;
+    padding-left: 8px;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  /* Dimension breakdown */
+  .dim-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+  }
+
+  /* Question explorer */
+  .question-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 12px;
+  }
+
+  .q-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .q-card:hover { border-color: var(--accent); }
+
+  .q-card .q-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .q-card .q-question {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 4px;
+  }
+
+  .q-card .q-meta {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  .badge-correct { background: var(--green); color: var(--bg); }
+  .badge-wrong { background: var(--red); color: white; }
+  .badge-halluc { background: var(--orange); color: var(--bg); }
+
+  /* Answer modal */
+  .modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .modal-backdrop.active { display: flex; justify-content: center; align-items: flex-start; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 900px;
+    width: 100%;
+    padding: 24px;
+    margin-top: 40px;
+  }
+
+  .modal h2 { margin-top: 0; }
+
+  .modal .close-btn {
+    float: right;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.5rem;
+    cursor: pointer;
+  }
+  .modal .close-btn:hover { color: var(--text); }
+
+  .answer-compare {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .answer-block {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .answer-block .ab-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+
+  .answer-block .ab-body {
+    font-size: 0.82rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+    color: var(--text-dim);
+  }
+
+  /* Scenario filter */
+  .filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .filter-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 4px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+  }
+
+  .color-green { color: var(--green); }
+  .color-yellow { color: var(--yellow); }
+  .color-red { color: var(--red); }
+  .color-orange { color: var(--orange); }
+</style>
+</head>
+<body>
+
+<h1>Push Fight — Model Benchmark</h1>
+<p class="subtitle">Compare Ollama model performance for the RAG referee use case</p>
+
+<div class="load-area" id="loadArea">
+  <p>Drop <code>benchmark_results.json</code> here or click to load</p>
+  <p style="font-size:0.8rem;color:var(--text-dim);margin-top:8px">
+    Generate results with: <code>python benchmark/benchmark_models.py</code>
+  </p>
+  <input type="file" id="fileInput" accept=".json">
+</div>
+
+<div class="dashboard" id="dashboard">
+
+  <h2>Model Overview</h2>
+  <div class="cards" id="modelCards"></div>
+
+  <h2>Composite Score (0–100)</h2>
+  <div class="bar-chart" id="compositeChart"></div>
+
+  <h2>Score Breakdown by Dimension</h2>
+  <div class="dim-grid" id="dimCharts"></div>
+
+  <h2>Per-Category Performance</h2>
+  <div class="bar-chart" id="categoryChart"></div>
+
+  <h2>Question Explorer</h2>
+  <div class="filters" id="filters"></div>
+  <div class="question-grid" id="questionGrid"></div>
+
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal">
+    <button class="close-btn" id="modalClose">&times;</button>
+    <h2 id="modalTitle"></h2>
+    <p id="modalMeta" style="color:var(--text-dim);font-size:0.85rem;margin-bottom:12px"></p>
+    <div class="answer-compare" id="modalAnswers"></div>
+  </div>
+</div>
+
+<script>
+let DATA = [];
+let MODELS = [];
+
+// --- Data loading ---
+const loadArea = document.getElementById('loadArea');
+const fileInput = document.getElementById('fileInput');
+const dashboard = document.getElementById('dashboard');
+
+loadArea.addEventListener('click', () => fileInput.click());
+loadArea.addEventListener('dragover', e => { e.preventDefault(); loadArea.style.borderColor = 'var(--accent)'; });
+loadArea.addEventListener('dragleave', () => { loadArea.style.borderColor = 'var(--border)'; });
+loadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  loadArea.style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file) readFile(file);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) readFile(e.target.files[0]);
+});
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      DATA = JSON.parse(e.target.result);
+      MODELS = [...new Set(DATA.map(r => r.model))];
+      loadArea.style.display = 'none';
+      dashboard.classList.add('active');
+      render();
+    } catch(err) {
+      alert('Invalid JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// --- Color helpers ---
+const PALETTE = ['#6c8cff','#4ade80','#fbbf24','#f87171','#a78bfa','#fb923c','#38bdf8','#f472b6','#34d399','#e879f9'];
+function modelColor(i) { return PALETTE[i % PALETTE.length]; }
+
+function scoreColor(score, max=100) {
+  const pct = score / max;
+  if (pct >= 0.7) return 'var(--green)';
+  if (pct >= 0.4) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+// --- Render ---
+function render() {
+  renderCards();
+  renderCompositeChart();
+  renderDimCharts();
+  renderCategoryChart();
+  renderFilters();
+  renderQuestions();
+}
+
+function modelStats(model) {
+  const rows = DATA.filter(r => r.model === model);
+  const avg = (arr, fn) => arr.reduce((s, r) => s + fn(r), 0) / arr.length;
+  const factualRows = rows.filter(r => r.factual_correct !== null);
+  const factualPct = factualRows.length > 0
+    ? factualRows.filter(r => r.factual_correct).length / factualRows.length
+    : null;
+
+  return {
+    count: rows.length,
+    avgComposite: avg(rows, r => r.composite_score),
+    avgTime: avg(rows, r => r.elapsed_sec),
+    avgKeyword: avg(rows, r => r.keyword_score),
+    factualPct,
+    factualTotal: factualRows.length,
+    avgHalluc: avg(rows, r => r.hallucination_score),
+    totalHalluc: rows.reduce((s, r) => s + r.hallucinations_found.length, 0),
+    avgWords: avg(rows, r => r.word_count),
+  };
+}
+
+function renderCards() {
+  const container = document.getElementById('modelCards');
+  container.innerHTML = MODELS.map((model, i) => {
+    const s = modelStats(model);
+    const factualStr = s.factualPct !== null
+      ? `${(s.factualPct*100).toFixed(0)}% (${Math.round(s.factualPct*s.factualTotal)}/${s.factualTotal})`
+      : 'n/a';
+    return `
+      <div class="card" style="border-top: 3px solid ${modelColor(i)}">
+        <div class="model-name">${model}</div>
+        <div class="score-big" style="color:${scoreColor(s.avgComposite)}">${s.avgComposite.toFixed(0)}</div>
+        <div class="score-label">composite score /100</div>
+        <div class="stats-row">
+          <div class="stat"><span class="stat-val">${s.avgTime.toFixed(1)}s</span><span class="stat-label">avg time</span></div>
+          <div class="stat"><span class="stat-val">${(s.avgKeyword*100).toFixed(0)}%</span><span class="stat-label">keywords</span></div>
+          <div class="stat"><span class="stat-val">${factualStr}</span><span class="stat-label">factual</span></div>
+          <div class="stat"><span class="stat-val">${s.totalHalluc}</span><span class="stat-label">hallucinations</span></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderBar(label, value, maxVal, color, suffix='') {
+  const pct = Math.max(1, (value / maxVal) * 100);
+  return `
+    <div class="bar-row">
+      <div class="bar-label">${label}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%;background:${color}">${value >= maxVal*0.15 ? '' : ''}</div>
+      </div>
+      <div class="bar-value" style="color:${color}">${typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(1)) : value}${suffix}</div>
+    </div>
+  `;
+}
+
+function renderCompositeChart() {
+  const container = document.getElementById('compositeChart');
+  container.innerHTML = MODELS.map((model, i) => {
+    const s = modelStats(model);
+    return renderBar(model, s.avgComposite, 100, modelColor(i));
+  }).join('');
+}
+
+function renderDimCharts() {
+  const container = document.getElementById('dimCharts');
+
+  const dims = [
+    { title: 'Keyword Coverage', fn: r => r.keyword_score, max: 1, fmt: v => (v*100).toFixed(0) + '%' },
+    { title: 'Factual Accuracy', fn: null, max: 1, fmt: v => v === null ? 'n/a' : (v*100).toFixed(0) + '%' },
+    { title: 'Hallucination-Free', fn: r => r.hallucination_score, max: 1, fmt: v => (v*100).toFixed(0) + '%' },
+    { title: 'Avg Response Time', fn: r => r.elapsed_sec, max: 0, fmt: v => v.toFixed(1) + 's', invert: true },
+  ];
+
+  container.innerHTML = dims.map(dim => {
+    let bars = MODELS.map((model, i) => {
+      const rows = DATA.filter(r => r.model === model);
+
+      let value;
+      if (dim.title === 'Factual Accuracy') {
+        const factual = rows.filter(r => r.factual_correct !== null);
+        value = factual.length > 0 ? factual.filter(r => r.factual_correct).length / factual.length : null;
+      } else {
+        value = rows.reduce((s, r) => s + dim.fn(r), 0) / rows.length;
+      }
+
+      const maxVal = dim.max || Math.max(...MODELS.map(m => {
+        const rs = DATA.filter(r => r.model === m);
+        return rs.reduce((s, r) => s + dim.fn(r), 0) / rs.length;
+      }));
+
+      const displayVal = value !== null ? value : 0;
+      const color = dim.invert
+        ? scoreColor(100 - (displayVal / maxVal) * 100)
+        : scoreColor(displayVal / maxVal * 100);
+
+      return `
+        <div class="bar-row">
+          <div class="bar-label">${model}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${value !== null ? Math.max(1, (displayVal / maxVal) * 100) : 0}%;background:${modelColor(i)}"></div>
+          </div>
+          <div class="bar-value">${dim.fmt(value)}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `<div class="card"><h3>${dim.title}</h3>${bars}</div>`;
+  }).join('');
+}
+
+function renderCategoryChart() {
+  const container = document.getElementById('categoryChart');
+  const categories = [...new Set(DATA.map(r => r.category))].sort();
+
+  let html = '';
+  for (const cat of categories) {
+    html += `<h3 style="margin-top:12px;text-transform:capitalize">${cat}</h3>`;
+    html += MODELS.map((model, i) => {
+      const rows = DATA.filter(r => r.model === model && r.category === cat);
+      if (!rows.length) return '';
+      const avg = rows.reduce((s, r) => s + r.composite_score, 0) / rows.length;
+      return renderBar(model, avg, 100, modelColor(i));
+    }).join('');
+  }
+  container.innerHTML = html;
+}
+
+// --- Filters ---
+let activeScenario = 'all';
+
+function renderFilters() {
+  const scenarios = ['all', ...new Set(DATA.map(r => r.scenario))];
+  const container = document.getElementById('filters');
+  container.innerHTML = scenarios.map(s =>
+    `<button class="filter-btn ${s === activeScenario ? 'active' : ''}" data-scenario="${s}">${s}</button>`
+  ).join('');
+
+  container.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeScenario = btn.dataset.scenario;
+      renderFilters();
+      renderQuestions();
+    });
+  });
+}
+
+// --- Question grid ---
+function renderQuestions() {
+  const container = document.getElementById('questionGrid');
+  const questions = [...new Set(DATA.map(r => r.scenario + '|||' + r.question))];
+
+  container.innerHTML = questions
+    .filter(key => {
+      const [scenario] = key.split('|||');
+      return activeScenario === 'all' || scenario === activeScenario;
+    })
+    .map(key => {
+      const [scenario, question] = key.split('|||');
+      const rows = DATA.filter(r => r.scenario === scenario && r.question === question);
+
+      const badges = MODELS.map((model, i) => {
+        const r = rows.find(r => r.model === model);
+        if (!r) return '';
+        const color = scoreColor(r.composite_score);
+        let extra = '';
+        if (r.factual_correct === false) extra += '<span class="badge badge-wrong">WRONG</span> ';
+        if (r.hallucinations_found.length > 0) extra += '<span class="badge badge-halluc">HALLUC</span> ';
+
+        return `<span style="font-size:0.75rem;margin-right:8px">
+          <span style="color:${modelColor(i)};font-weight:700">${model}</span>
+          <span style="color:${color};font-weight:800">${r.composite_score.toFixed(0)}</span>
+          ${extra}
+        </span>`;
+      }).join('');
+
+      return `
+        <div class="q-card" data-key="${key}">
+          <div class="q-question">${question}</div>
+          <div class="q-meta">${scenario} · ${rows[0]?.category || ''}</div>
+          <div style="margin-top:8px">${badges}</div>
+        </div>
+      `;
+    }).join('');
+
+  container.querySelectorAll('.q-card').forEach(card => {
+    card.addEventListener('click', () => openModal(card.dataset.key));
+  });
+}
+
+// --- Modal ---
+function openModal(key) {
+  const [scenario, question] = key.split('|||');
+  const rows = DATA.filter(r => r.scenario === scenario && r.question === question);
+
+  document.getElementById('modalTitle').textContent = question;
+  document.getElementById('modalMeta').textContent = `${scenario} · ${rows[0]?.category || ''}`;
+
+  const answersEl = document.getElementById('modalAnswers');
+  answersEl.innerHTML = MODELS.map((model, i) => {
+    const r = rows.find(r => r.model === model);
+    if (!r) return '';
+
+    let badges = '';
+    if (r.factual_correct === true) badges += '<span class="badge badge-correct">CORRECT</span> ';
+    if (r.factual_correct === false) badges += '<span class="badge badge-wrong">WRONG</span> ';
+    if (r.hallucinations_found.length > 0) badges += `<span class="badge badge-halluc">Hallucinated: ${r.hallucinations_found.join(', ')}</span> `;
+
+    return `
+      <div class="answer-block">
+        <div class="ab-header">
+          <span style="color:${modelColor(i)}">${model}</span>
+          <span>
+            ${badges}
+            <span style="color:${scoreColor(r.composite_score)};font-size:1.1rem">${r.composite_score.toFixed(0)}/100</span>
+            <span style="color:var(--text-dim);font-size:0.8rem;margin-left:8px">${r.elapsed_sec.toFixed(1)}s · ${r.word_count}w</span>
+          </span>
+        </div>
+        <div class="ab-body">${escapeHtml(r.answer)}</div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('modalBackdrop').classList.add('active');
+}
+
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalBackdrop').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalBackdrop')) closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+function closeModal() {
+  document.getElementById('modalBackdrop').classList.remove('active');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// --- Auto-load if benchmark_results.json is in the same directory ---
+// (won't work from file:// but works from a local server)
+fetch('benchmark_results.json')
+  .then(r => r.ok ? r.json() : Promise.reject())
+  .then(data => {
+    DATA = data;
+    MODELS = [...new Set(DATA.map(r => r.model))];
+    loadArea.style.display = 'none';
+    dashboard.classList.add('active');
+    render();
+  })
+  .catch(() => {}); // Silently fail — user can load manually
+</script>
+</body>
+</html>

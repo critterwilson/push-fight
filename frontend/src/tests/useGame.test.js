@@ -1,3 +1,24 @@
+/**
+ * Tests for the useGame React hook (frontend/src/useGame.js).
+ *
+ * The useGame hook is the central state-management layer for the Push Fight
+ * frontend. It handles:
+ *   - Game session creation (via fetch to POST /api/game).
+ *   - WebSocket connection lifecycle (connect, reconnect, close).
+ *   - Real-time state updates from the server (state_update events).
+ *   - AI action visualization (ai_action / ai_done events).
+ *   - RAG referee Q&A (askReferee + rag_answer events).
+ *   - User interactions (handleCellClick for piece selection and movement).
+ *
+ * Testing strategy:
+ *   - WebSocket is stubbed with MockWebSocket, which records instances and
+ *     provides an emit() helper to simulate server messages.
+ *   - fetch is mocked per-test to control API responses.
+ *   - vi.useFakeTimers() is used to test time-dependent behavior like
+ *     WebSocket reconnection delays.
+ *   - renderHook from @testing-library/react is used to mount the hook in
+ *     isolation (no wrapping component needed).
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useGame } from '../useGame'
@@ -6,6 +27,13 @@ import { useGame } from '../useGame'
 // Mock WebSocket (no actual connections in tests)
 // ---------------------------------------------------------------------------
 
+/**
+ * Minimal WebSocket stub that records all created instances and provides
+ * an emit() helper to simulate incoming server messages.
+ * - constructor: records the URL and marks readyState as OPEN (1).
+ * - send/close: no-ops (close triggers onclose with code 1000).
+ * - emit(data): serializes data as JSON and calls onmessage.
+ */
 class MockWebSocket {
   constructor(url) {
     this.url      = url
@@ -14,15 +42,20 @@ class MockWebSocket {
   }
   send()  {}
   close() { this.onclose?.({ code: 1000 }) }
-  // Test helpers
+  /** Simulate a server-sent message by calling onmessage with JSON data. */
   emit(data) { this.onmessage?.({ data: JSON.stringify(data) }) }
 }
+/** Track all MockWebSocket instances created during a test. */
 MockWebSocket.instances = []
 
 // ---------------------------------------------------------------------------
 // Mock fetch
 // ---------------------------------------------------------------------------
 
+/**
+ * The initial game state returned by the createGame API call.
+ * Represents an empty 10x4 board in PvP mode, white to move, no pieces.
+ */
 const INITIAL_STATE = {
   sessionId: 'sess-1',
   state: {
@@ -45,6 +78,7 @@ const INITIAL_STATE = {
   },
 }
 
+/** Mock global.fetch to resolve with the given body. */
 function mockFetch(body, ok = true) {
   global.fetch = vi.fn().mockResolvedValueOnce({
     ok, json: () => Promise.resolve(body),
@@ -56,12 +90,15 @@ function mockFetch(body, ok = true) {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
+  /** Reset WebSocket instance tracking and install the mock. Use fake
+   *  timers to control reconnection delay behavior. */
   MockWebSocket.instances = []
   global.WebSocket = MockWebSocket
   vi.useFakeTimers()
 })
 
 afterEach(() => {
+  /** Restore all mocks and switch back to real timers after each test. */
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -71,7 +108,12 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('useGame — initial state', () => {
+  /** Before any game is created, the hook should be in a clean idle state
+   *  with no session, no game state, no AI activity, and no messages. */
+
   it('starts with no session and no game state', () => {
+    /** Verify all initial values are null/false/empty to confirm the hook
+     *  doesn't attempt any API calls or WebSocket connections on mount. */
     const { result } = renderHook(() => useGame())
     expect(result.current.sessionId).toBeNull()
     expect(result.current.gameState).toBeNull()
@@ -82,7 +124,12 @@ describe('useGame — initial state', () => {
 })
 
 describe('useGame — createGame', () => {
+  /** Tests for the createGame flow: API call, state initialization, WebSocket
+   *  connection establishment, and error handling on API failure. */
+
   it('sets sessionId and gameState after createGame', async () => {
+    /** After a successful createGame call, the hook must store the session
+     *  ID and populate the game state from the API response. */
     mockFetch(INITIAL_STATE)
     const { result } = renderHook(() => useGame())
 
@@ -96,6 +143,8 @@ describe('useGame — createGame', () => {
   })
 
   it('opens a WebSocket connection after session is created', async () => {
+    /** The hook must automatically establish a WebSocket connection to
+     *  /ws/{sessionId} for real-time state updates after game creation. */
     mockFetch(INITIAL_STATE)
     const { result } = renderHook(() => useGame())
 
@@ -108,6 +157,9 @@ describe('useGame — createGame', () => {
   })
 
   it('shows error and does not set sessionId on API failure', async () => {
+    /** When the createGame API call fails, the hook must set an error
+     *  message and leave sessionId as null so the UI can display an error
+     *  state rather than attempting to connect via WebSocket. */
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       json: () => Promise.resolve({ detail: 'Server error' }),

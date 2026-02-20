@@ -1,4 +1,28 @@
-"""Tests for the RL environment."""
+"""
+Tests for the Push Fight reinforcement learning environment (app.rl.env).
+
+The PushFightEnv wraps the game engine as a Gymnasium-compatible environment
+with masked action spaces, enabling training with MaskablePPO. The action
+space is divided into three ranges:
+
+  - Actions 0-1599:    Move actions (piece selection + destination)
+  - Actions 1600-1759: Push actions (piece selection + direction)
+  - Actions 1760-1799: Placement actions (setup phase only)
+
+This module tests:
+  - Observation vector shape, value range, and semantic correctness.
+  - Action mask shape, dtype, and phase-dependent validity.
+  - Setup phase: placement masks, board modifications, phase transitions,
+    reward shaping for central vs. corner placements.
+  - Move phase: valid/invalid action handling, reward signals.
+  - Push phase: execution correctness, turn switching, kill-zone termination,
+    round-threat bonus reward shaping.
+  - Full episode execution with random valid actions.
+  - Episode length truncation.
+  - Fallback behavior when no valid actions exist.
+  - Action decoding for all three action types (move, push, place).
+  - Push validation predicates.
+"""
 
 import numpy as np
 import pytest
@@ -13,7 +37,10 @@ from app.engine.board import PushFightBoard
 # ---------------------------------------------------------------------------
 
 def _setup_env_in_setup_mode():
-    """Return an env manually placed into setup mode (for testing setup logic)."""
+    """Create a PushFightEnv and manually override its state to be in setup
+    mode with an empty custom game. This bypasses the normal reset flow
+    (which starts in move phase with the standard layout) so that setup-
+    specific logic can be tested in isolation."""
     env = PushFightEnv()
     env.reset()
     env.game = GameState.create_custom_game()
@@ -23,7 +50,10 @@ def _setup_env_in_setup_mode():
 
 
 def _complete_setup(env):
-    """Step the env through a full setup phase using valid placements."""
+    """Drive the env through a full setup phase by taking valid placement
+    actions until the phase transitions from 'setup' to 'move'. Asserts
+    that valid placement actions are always available during setup and that
+    the phase correctly transitions after all 10 pieces are placed."""
     assert env.current_phase == 'setup', "Expected env to be in setup phase"
     for _ in range(10):  # 5 white + 5 black pieces
         if env.current_phase != 'setup':
@@ -40,21 +70,37 @@ def _complete_setup(env):
 # ---------------------------------------------------------------------------
 
 class TestObservation:
+    """Tests for the observation vector returned by the environment.
+
+    The observation is a flat numpy array of 205 floats in [0, 1]:
+      - Indices 0-199: 40 cells x 5 features each (is_occupied, is_mine,
+        is_square, is_round, is_anchor).
+      - Index 200: is_push_phase (0.0 = move phase, 1.0 = push phase).
+      - Index 201: moves_remaining (normalized: 2/2 = 1.0, 1/2 = 0.5, 0/2 = 0.0).
+      - Index 202: is_white_turn (1.0 = white, 0.0 = black).
+      - Index 203: own_rounds (normalized: 2/2 = 1.0, 1/2 = 0.5).
+      - Index 204: opp_rounds (normalized: 2/2 = 1.0, 1/2 = 0.5).
+    """
+
     def test_observation_shape(self):
+        """The observation must be a 1D array of exactly 205 elements
+        (40 cells * 5 features + 5 scalar features)."""
         env = PushFightEnv()
         obs, info = env.reset()
         assert obs.shape == (205,), f"Expected (205,), got {obs.shape}"
 
     def test_observation_range(self):
+        """All observation values must be normalized to [0, 1] for stable
+        neural network training."""
         env = PushFightEnv()
         obs, info = env.reset()
         assert np.all(obs >= 0.0)
         assert np.all(obs <= 1.0)
 
     def test_observation_scalars_at_reset(self):
-        """At reset (move phase, white to move, 2 rounds each side):
-        is_push_phase=0, moves_remaining=1.0, is_white_turn=1,
-        own_rounds=1.0, opp_rounds=1.0."""
+        """Verify the 5 scalar features at the end of the observation vector
+        have correct initial values after a fresh reset. These scalars encode
+        phase, move budget, turn, and round-piece counts."""
         env = PushFightEnv()
         obs, info = env.reset()
         assert obs[200] == 0.0   # is_push_phase — not in push phase
@@ -64,7 +110,10 @@ class TestObservation:
         assert obs[204] == 1.0   # opp_rounds — 2 round pieces alive (2/2)
 
     def test_observation_is_mine_perspective(self):
-        """is_mine feature should reflect current player's perspective."""
+        """The is_mine feature (index 1 within each cell's 5-feature block)
+        must reflect the current player's perspective. On white's turn,
+        white pieces should have is_mine=1.0. This perspective encoding
+        allows the same neural network to play both sides."""
         env = PushFightEnv()
         env.reset()
         obs = env._get_observation()
@@ -80,7 +129,9 @@ class TestObservation:
         assert found_mine, "White pieces should have is_mine=1.0 on white's turn"
 
     def test_observation_rounds_drop_when_piece_pushed_off(self):
-        """own_rounds (obs[203]) decreases when a round piece is pushed off."""
+        """When a round piece is removed from the board (simulating a push-off),
+        the opp_rounds scalar (obs[204]) must decrease from 1.0 to 0.5,
+        reflecting that only 1 of 2 opponent round pieces remains."""
         env = PushFightEnv()
         env.reset()
         obs_before = env._get_observation()
@@ -103,7 +154,19 @@ class TestObservation:
 # ---------------------------------------------------------------------------
 
 class TestActionMasking:
+    """Tests for the action_masks() method that returns a boolean mask over
+    the full 1800-action space.
+
+    The mask enforces phase-dependent legality: during the move phase only
+    move actions (0-1599) may be True; during the push phase only push
+    actions (1600-1759) may be True; during setup only placement actions
+    (1760-1799) may be True. This prevents the agent from taking
+    out-of-phase actions.
+    """
+
     def test_action_masks_shape(self):
+        """The mask must have exactly 1800 boolean entries — one per possible
+        action in the combined move + push + placement space."""
         env = PushFightEnv()
         env.reset()
         mask = env.action_masks()
@@ -111,13 +174,16 @@ class TestActionMasking:
         assert mask.dtype == bool
 
     def test_action_masks_has_valid_actions(self):
+        """After reset, at least one action must be valid. A mask of all
+        False would indicate a broken environment or impossible game state."""
         env = PushFightEnv()
         env.reset()
         mask = env.action_masks()
         assert np.any(mask), "Should have at least one valid action"
 
     def test_action_masks_move_phase(self):
-        """In move phase, only move actions (0–1599) should be valid."""
+        """During move phase, only actions in the move range (0-1599) should
+        be marked valid. Push and placement actions must all be False."""
         env = PushFightEnv()
         env.reset()
         assert env.current_phase == 'move'
@@ -125,7 +191,8 @@ class TestActionMasking:
         assert not np.any(mask[1600:]), "Push/place actions shouldn't be valid during move phase"
 
     def test_action_masks_push_phase(self):
-        """In push phase, only push actions (1600–1759) should be valid."""
+        """During push phase, only actions in the push range (1600-1759)
+        should be valid. Move and placement ranges must all be False."""
         env = PushFightEnv()
         env.reset()
         env.current_phase = 'push'
@@ -141,6 +208,20 @@ class TestActionMasking:
 # ---------------------------------------------------------------------------
 
 class TestSetupPhase:
+    """Tests for the setup/placement phase of the RL environment.
+
+    During setup, the agent places 5 pieces per team (10 total) on their
+    respective halves of the board. These tests use _setup_env_in_setup_mode()
+    to manually enter setup mode and verify:
+      - Only placement actions (1760-1799) are valid.
+      - Territory constraints (white can't place on black's rows).
+      - Kill zones are excluded from valid placements.
+      - Each placement step adds exactly one piece to the board.
+      - The phase transitions to 'move' after 10 placements.
+      - Reward shaping: center placements get higher reward than corners.
+      - Current player switches from white to black after white's 5 pieces.
+    """
+
     def test_setup_action_masks_only_placement_range(self):
         """During setup, only placement actions (1760–1799) should be valid."""
         env = _setup_env_in_setup_mode()
@@ -229,7 +310,17 @@ class TestSetupPhase:
 # ---------------------------------------------------------------------------
 
 class TestStepMovePhase:
+    """Tests for taking move actions during the move phase.
+
+    Validates that valid moves produce non-negative reward and correct info
+    metadata, while invalid moves (e.g., moving from an empty cell) receive
+    a small penalty and are substituted with a fallback action rather than
+    crashing the environment.
+    """
+
     def test_valid_move(self):
+        """A valid move action should produce non-negative reward, set
+        action_type='move' in info, and not terminate the episode."""
         env = PushFightEnv()
         env.reset()
         valid_actions = env._get_valid_actions()
@@ -242,6 +333,9 @@ class TestStepMovePhase:
         assert not terminated
 
     def test_invalid_move_gets_substituted(self):
+        """An invalid action (e.g., action 0 with no piece at (0,0)) should
+        be caught, substituted with a fallback, and penalized with a small
+        negative reward to discourage the policy from selecting masked actions."""
         env = PushFightEnv()
         env.reset()
         # Action 0 is almost certainly invalid during move phase (no piece at 0,0)
@@ -254,8 +348,18 @@ class TestStepMovePhase:
 # ---------------------------------------------------------------------------
 
 class TestStepPushPhase:
+    """Tests for executing push actions during the push phase.
+
+    These tests construct specific board configurations by manually placing
+    pieces on a fresh PushFightBoard, then verify push execution (piece
+    movement, turn switching), kill-zone termination (game_over + winner),
+    and the round-threat reward bonus.
+    """
+
     def test_push_executes_once(self):
-        """Critical test: push should execute exactly once."""
+        """Critical test: a push action must execute exactly once — the pusher
+        moves one cell, the pushed piece moves one cell, and no pieces are
+        duplicated or lost. This guards against double-execution bugs."""
         env = PushFightEnv()
         env.reset()
 
@@ -280,6 +384,8 @@ class TestStepPushPhase:
         assert env.game.board.get_piece(7, 1).team == 'black'
 
     def test_push_switches_turn(self):
+        """After a successful push, the current player must switch and the
+        phase must revert to 'move' for the next player's turn."""
         env = PushFightEnv()
         env.reset()
 
@@ -297,6 +403,9 @@ class TestStepPushPhase:
         assert env.current_phase == 'move'
 
     def test_push_into_kill_zone_terminates(self):
+        """Pushing an opponent's round piece into a kill zone must terminate
+        the episode with reward=1.0 (win) and set game_over=True with the
+        pushing player as the winner."""
         env = PushFightEnv()
         env.reset()
 
@@ -344,8 +453,17 @@ class TestStepPushPhase:
 # ---------------------------------------------------------------------------
 
 class TestFullEpisode:
+    """Smoke tests that run full episodes with randomly selected valid actions.
+
+    These tests verify that the environment can execute a complete game loop
+    without crashing, and that episodes eventually terminate (either by a
+    piece being pushed off or by reaching the step limit).
+    """
+
     def test_episode_with_random_valid_actions(self):
-        """Run a full episode using only valid actions."""
+        """Run up to 500 steps using only valid actions selected randomly.
+        The main goal is crash-resistance — any assertion failure indicates
+        a bug in action masking, state transitions, or termination logic."""
         env = PushFightEnv()
         obs, info = env.reset()
         total_reward = 0.0
@@ -390,7 +508,17 @@ class TestFullEpisode:
 # ---------------------------------------------------------------------------
 
 class TestEpisodeLengthLimit:
+    """Tests for the max_steps truncation mechanism.
+
+    Episodes that exceed max_steps are truncated (truncated=True) to prevent
+    infinite games during training. This is separate from termination
+    (terminated=True), which occurs when a piece is pushed off.
+    """
+
     def test_truncation_at_max_steps(self):
+        """With max_steps=10, the episode must end (truncated or terminated)
+        within 15 attempted steps. This verifies the truncation guard fires
+        before the episode runs forever."""
         env = PushFightEnv()
         env.max_steps = 10
         obs, info = env.reset()
@@ -412,8 +540,17 @@ class TestEpisodeLengthLimit:
 # ---------------------------------------------------------------------------
 
 class TestNoValidActionsFallback:
+    """Tests for the edge case where no valid actions exist.
+
+    This can happen when the current player has no square pieces (so no
+    push is possible) and the phase is 'push'. The environment must handle
+    this gracefully by terminating with a loss reward.
+    """
+
     def test_empty_valid_actions_terminates(self):
-        """When no valid actions exist, the game should end."""
+        """When no valid push actions exist (only a round piece on the board
+        for the current player), the environment must terminate with
+        reward=-1.0 (loss) rather than hanging or crashing."""
         env = PushFightEnv()
         env.reset()
 
@@ -433,7 +570,17 @@ class TestNoValidActionsFallback:
 # ---------------------------------------------------------------------------
 
 class TestDecodeAction:
+    """Tests for _decode_action(), which converts a flat integer action index
+    into a human-readable (phase, data) tuple.
+
+    Action encoding:
+      - Move: action = src_y * 160 + src_x * 40 + dst_y * 4 + dst_x
+      - Push: action = 1600 + y * 16 + x * 4 + dir_idx
+      - Place: action = 1760 + y * 4 + x
+    """
+
     def test_decode_move_action(self):
+        """Decode a move action and verify (src_y, src_x, dst_y, dst_x)."""
         env = PushFightEnv()
         env.reset()
         action = 4 * 160 + 0 * 40 + 3 * 4 + 0
@@ -442,6 +589,7 @@ class TestDecodeAction:
         assert data == (4, 0, 3, 0)
 
     def test_decode_push_action(self):
+        """Decode a push action and verify (y, x, direction_tuple)."""
         env = PushFightEnv()
         env.reset()
         env.current_phase = 'push'
@@ -452,14 +600,18 @@ class TestDecodeAction:
         assert data == (4, 0, (1, 0))
 
     def test_decode_setup_action(self):
+        """Decode a placement action and verify (y, x) target cell."""
         env = _setup_env_in_setup_mode()
-        # Place at row 4, col 2 → 1760 + 4*4 + 2 = 1778
+        # Place at row 4, col 2: 1760 + 4*4 + 2 = 1778
         action = 1760 + 4 * 4 + 2
         phase, data = env._decode_action(action)
         assert phase == 'place'
         assert data == (4, 2)
 
     def test_decode_invalid_returns_none(self):
+        """An action index that belongs to a different phase (e.g., a push
+        action during move phase) must decode to (None, ...) so the step
+        logic can reject it."""
         env = PushFightEnv()
         env.reset()
         # Push action during move phase should return None
@@ -472,8 +624,20 @@ class TestDecodeAction:
 # ---------------------------------------------------------------------------
 
 class TestIsValidPush:
+    """Tests for the _is_valid_push() predicate used by action masking.
+
+    Validates the five conditions that make a push invalid:
+      - Pushing from an empty cell.
+      - Pushing with a round piece (only squares can push).
+      - Pushing with an opponent's piece.
+      - Pushing into a side rail (out of bounds).
+    And the positive case where all conditions are met.
+    """
+
     def _env_with_pieces(self):
-        """Return an env with the standard starting position in push phase."""
+        """Helper: return an env with the standard starting layout forced
+        into push phase (moves_made=2). The standard layout has white
+        squares at rows 3-4 and black squares at rows 5-6."""
         env = PushFightEnv()
         env.reset()
         env.current_phase = 'push'
@@ -481,21 +645,30 @@ class TestIsValidPush:
         return env
 
     def test_valid_push(self):
+        """White square at (4,0) pushing down (1,0) — valid because it is
+        the current player's square piece pushing into a playable direction."""
         env = self._env_with_pieces()
         assert env._is_valid_push(4, 0, (1, 0)) is True
 
     def test_invalid_push_empty_square(self):
+        """Pushing from an empty cell (3,0) must be invalid — there is no
+        piece to initiate the push."""
         env = self._env_with_pieces()
         assert env._is_valid_push(3, 0, (1, 0)) is False
 
     def test_invalid_push_round_piece(self):
+        """Round pieces cannot push. White round at (4,3) must be rejected."""
         env = self._env_with_pieces()
         assert env._is_valid_push(4, 3, (1, 0)) is False
 
     def test_invalid_push_opponent_piece(self):
+        """Cannot push with the opponent's piece. Black square at (5,0) on
+        white's turn must be rejected."""
         env = self._env_with_pieces()
         assert env._is_valid_push(5, 0, (1, 0)) is False
 
     def test_invalid_push_side_rail(self):
+        """Pushing into a side rail (column -1) must be rejected — side rails
+        block pushes entirely, unlike kill zones which eliminate pieces."""
         env = self._env_with_pieces()
         assert env._is_valid_push(4, 0, (0, -1)) is False

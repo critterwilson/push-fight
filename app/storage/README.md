@@ -46,4 +46,4 @@ See [app/engine/README.md](../engine/README.md) for the engine's serialization d
 
 - The `saves/` directory is created automatically if it doesn't exist.
 - In the Docker container, `saves/` is mounted as an `emptyDir` volume and is lost on pod restart. Replace with a PVC for persistence across restarts.
-- The server (`app/server/main.py`) calls `GameState.save_to_file()` / `load_from_file()` directly rather than going through this module, but both routes use the same underlying JSON format.
+- The server's `SaveService` (`app/server/services/save_service.py`) delegates to this module for all save/load operations.

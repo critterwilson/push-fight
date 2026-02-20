@@ -1,81 +1,118 @@
 /* ============================================================
    Push Fight — Global Styles
+   ============================================================
+
+   Design System Overview
+   ----------------------
+   This stylesheet implements a BJJ (Brazilian Jiu-Jitsu) themed
+   design system for the Push Fight board game web application.
+
+   Key architectural decisions:
+   - CSS custom properties (variables) for full theming support
+   - Light/dark mode toggled via [data-theme="dark"] on <html>
+   - BJJ belt colors as the base palette (white → blue → purple → brown → black)
+   - Mobile-first responsive layout that stacks at 1100px breakpoint
+   - All colors reference CSS variables — no hardcoded hex in component styles
+
+   Color naming convention:
+   - --belt-*:    BJJ-themed base palette colors
+   - --bg-*:      Background colors for surfaces
+   - --text-*:    Text colors at different emphasis levels
+   - --accent-*:  Action/state colors (gold=selection, green=success, orange=AI, red=error)
+   - --btn-*:     Button-specific background/hover colors
+
+   Component sections are marked with comment headers below.
    ============================================================ */
 
+/* Universal box-sizing reset for predictable sizing */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* --- BJJ Color Palette --- */
+  /* --- BJJ Color Palette ---
+     These form the foundational palette, named after BJJ belt ranks.
+     Used directly for board wood texture, piece colors, and theme anchors. */
   --belt-white:      #f5f5f5;
   --belt-blue:       #0055d4;
   --belt-purple:     #6a0dad;
-  --belt-brown:      #5d4037;
-  --belt-brown-dark: #4e342e;
+  --belt-brown:      #5d4037;    /* Board surface color */
+  --belt-brown-dark: #4e342e;    /* Board border / wood grain accent */
   --belt-black:      #121212;
 
-  /* --- Light Mode Defaults (White Belt Base) --- */
-  --bg:            var(--belt-white);
-  --bg-panel:      #ffffff;
-  --bg-input:      #e8e8e8;
-  --border:        #cccccc;
-  --border-light:  #dddddd;
-  --text:          var(--belt-black);
-  --text-dim:      #555555;
-  --text-muted:    #777777;
+  /* --- Light Mode Defaults (White Belt Base) ---
+     These semantic variables are overridden by [data-theme="dark"] below.
+     All component styles reference these rather than raw colors. */
+  --bg:            var(--belt-white);    /* Page background */
+  --bg-panel:      #ffffff;              /* Card/panel surfaces */
+  --bg-input:      #e8e8e8;             /* Input fields, code blocks */
+  --border:        #cccccc;              /* Primary borders */
+  --border-light:  #dddddd;             /* Subtle dividers */
+  --text:          var(--belt-black);    /* Primary text */
+  --text-dim:      #555555;              /* Secondary text (labels, hints) */
+  --text-muted:    #777777;              /* Tertiary text (placeholders, metadata) */
 
-  --accent-gold:   #ffd700;
-  --accent-green:  #2ea043;
-  --accent-orange: #d45500;
-  --accent-red:    #cf222e;
+  /* Accent colors for interactive states and feedback */
+  --accent-gold:   #ffd700;   /* Selection highlight, anchor indicator */
+  --accent-green:  #2ea043;   /* Success, valid moves, setup targets */
+  --accent-orange: #d45500;   /* AI actions, push arrows */
+  --accent-red:    #cf222e;   /* Errors, kill zones */
 
-  --white-team:    #333333;
-  --black-team:    #222222;
+  /* Team colors for turn indicators and status text */
+  --white-team:    #333333;   /* White team text (dark for light bg) */
+  --black-team:    #222222;   /* Black team text */
 
-  --btn-primary:   var(--belt-blue);
-  --btn-primary-h: #0044aa;
-  --btn-ghost:     transparent;
-  --btn-ghost-h:   rgba(0,0,0,0.1);
+  /* Button color system */
+  --btn-primary:   var(--belt-blue);     /* Primary action buttons */
+  --btn-primary-h: #0044aa;             /* Primary hover state */
+  --btn-ghost:     transparent;          /* Ghost buttons (outline only) */
+  --btn-ghost-h:   rgba(0,0,0,0.1);    /* Ghost button hover fill */
 
-  /* --- Theme-adaptive colors --- */
-  --accent-green-subtle: #e6f4ea;
-  --chat-user-bg:        #dce8f8;
-  --chat-ref-bg:         #f0f0f0;
+  /* --- Theme-adaptive colors ---
+     These change between light/dark but serve specific UI contexts */
+  --accent-green-subtle: #e6f4ea;  /* Selected radio option background */
+  --chat-user-bg:        #dce8f8;  /* User message bubble */
+  --chat-ref-bg:         #f0f0f0;  /* Referee message bubble */
 
-  --radius:        6px;
-  --radius-lg:     10px;
-  --shadow:        0 4px 24px rgba(0,0,0,0.15);
+  /* Shared sizing tokens */
+  --radius:        6px;                  /* Standard border radius */
+  --radius-lg:     10px;                 /* Large radius (modals, board) */
+  --shadow:        0 4px 24px rgba(0,0,0,0.15);  /* Elevation shadow */
 }
 
-/* --- Dark Mode Overrides (Black Belt Base) --- */
+/* --- Dark Mode Overrides (Black Belt Base) ---
+   Applied when ThemeToggle.jsx sets data-theme="dark" on <html>.
+   Purple replaces blue as primary action color in dark mode for
+   better contrast against the dark backgrounds. */
 [data-theme="dark"] {
-  --bg:            var(--belt-black);
-  --bg-panel:      #1c1c1c;
-  --bg-input:      #0d1117;
-  --border:        #30363d;
-  --border-light:  #21262d;
-  --text:          #e6edf3;
-  --text-dim:      #8b949e;
-  --text-muted:    #484f58;
+  --bg:            var(--belt-black);   /* Deep black page background */
+  --bg-panel:      #1c1c1c;            /* Slightly lighter card surfaces */
+  --bg-input:      #0d1117;            /* GitHub-style input background */
+  --border:        #30363d;            /* Visible but subtle borders */
+  --border-light:  #21262d;            /* Very subtle dividers */
+  --text:          #e6edf3;            /* High-contrast primary text */
+  --text-dim:      #8b949e;            /* Muted labels and secondary text */
+  --text-muted:    #484f58;            /* Barely visible tertiary text */
 
-  --accent-green:  #3fb950;
-  --accent-orange: #ff6b1a;
-  --accent-red:    #f85149;
+  --accent-green:  #3fb950;   /* Brighter green for dark backgrounds */
+  --accent-orange: #ff6b1a;   /* Vivid orange for AI indicators */
+  --accent-red:    #f85149;   /* Bright red for errors */
 
-  --white-team:    #f0e8d8;
-  --black-team:    #a0a0a0;
+  /* Team colors invert: white pieces need light text, black pieces gray */
+  --white-team:    #f0e8d8;   /* Cream/parchment for white team text */
+  --black-team:    #a0a0a0;   /* Medium gray for black team text */
 
-  --btn-primary:   var(--belt-purple);
-  --btn-primary-h: #8a2be2;
-  --btn-ghost-h:   #21262d;
+  --btn-primary:   var(--belt-purple);  /* Purple primary buttons in dark mode */
+  --btn-primary-h: #8a2be2;            /* Brighter purple on hover */
+  --btn-ghost-h:   #21262d;            /* Subtle ghost button hover */
 
   /* --- Theme-adaptive colors (dark overrides) --- */
-  --accent-green-subtle: #1a3a22;
-  --chat-user-bg:        #1f4a8a;
-  --chat-ref-bg:         #21262d;
+  --accent-green-subtle: #1a3a22;  /* Dark green tint for selected options */
+  --chat-user-bg:        #1f4a8a;  /* Deep blue user message bubbles */
+  --chat-ref-bg:         #21262d;  /* Dark gray referee message bubbles */
 
-  --shadow:        0 4px 24px rgba(0,0,0,0.5);
+  --shadow:        0 4px 24px rgba(0,0,0,0.5);  /* Stronger shadow on dark bg */
 }
 
+/* Base body styles with smooth theme transition animation */
 body {
   background: var(--bg);
   color: var(--text);
@@ -83,10 +120,19 @@ body {
   font-size: 15px;
   line-height: 1.5;
   min-height: 100vh;
+  /* Smooth 300ms crossfade when toggling between light and dark themes */
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* ── Layout ──────────────────────────────────────────────── */
+/* ── Layout ──────────────────────────────────────────────────
+   App uses a vertical flex layout:
+   - Sticky header (z-index: 10)
+   - Flexible main area with board + side panel (horizontal on desktop)
+   - Fixed footer
+
+   The .game-layout arranges board-panel and side-panel side-by-side,
+   collapsing to vertical stack below 1100px viewport width.
+   ──────────────────────────────────────────────────────────── */
 
 .app {
   display: flex;
@@ -142,27 +188,31 @@ body {
 }
 
 .board-wrap {
-  /* Wood Texture Board */
+  /* Wood Texture Board
+     Creates a realistic wood-grain effect using two layered CSS gradients:
+     1. A 45-degree diagonal stripe pattern (subtle cross-hatching)
+     2. A horizontal repeating gradient simulating wood grain lines
+     Both use the BJJ brown belt colors for thematic consistency. */
   background-color: var(--belt-brown);
-  background-image: 
-    repeating-linear-gradient(
+  background-image:
+    repeating-linear-gradient(    /* Diagonal cross-hatch grain pattern */
       45deg,
       rgba(0,0,0,0.1) 0px,
       rgba(0,0,0,0.1) 2px,
       transparent 2px,
       transparent 4px
     ),
-    repeating-linear-gradient(
+    repeating-linear-gradient(    /* Horizontal wood plank stripes */
       90deg,
       var(--belt-brown),
       var(--belt-brown) 15px,
       var(--belt-brown-dark) 10px,
       var(--belt-brown-dark) 20px
     );
-  border: 8px solid var(--belt-brown-dark);
+  border: 8px solid var(--belt-brown-dark);  /* Thick border simulates board frame */
   border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow);
+  overflow: hidden;                /* Clips SVG board edges to rounded corners */
+  box-shadow: var(--shadow);       /* Elevation shadow for depth */
 }
 
 .side-panel {
@@ -182,7 +232,11 @@ body {
   font-size: 15px;
 }
 
-/* ── Status Bar ──────────────────────────────────────────── */
+/* ── Status Bar ──────────────────────────────────────────────
+   Displays current turn, phase (move/push), and pieces lost.
+   Uses team-specific colors for the player tag.
+   AI thinking state shows a pulsing orange animation.
+   ──────────────────────────────────────────────────────────── */
 
 .status-bar {
   background: var(--bg-panel);
@@ -247,7 +301,14 @@ body {
   min-width: 80px;
 }
 
-/* ── Setup Tray ──────────────────────────────────────────── */
+/* ── Setup Tray ──────────────────────────────────────────────
+   Piece palette shown during the placement phase at game start.
+   Each unplaced piece is a clickable chip with an SVG icon.
+   Chips transition through three states:
+   - Default: hoverable, selectable
+   - .selected: green border + glow (currently selected for placement)
+   - .placed: dimmed with strikethrough (already on the board)
+   ──────────────────────────────────────────────────────────── */
 
 .setup-tray {
   display: flex;
@@ -301,7 +362,13 @@ body {
   line-height: 1.4;
 }
 
-/* ── Game Controls ───────────────────────────────────────── */
+/* ── Game Controls ───────────────────────────────────────────
+   Side panel with action buttons and push direction pad.
+   The 3x3 direction pad (.dir-pad) uses CSS Grid to create
+   a D-pad layout: empty corners, arrow buttons on edges,
+   empty center. Disabled buttons at 20% opacity indicate
+   directions blocked by side rails or board boundaries.
+   ──────────────────────────────────────────────────────────── */
 
 .game-controls {
   background: var(--bg-panel);
@@ -326,7 +393,11 @@ body {
   color: var(--text-dim);
 }
 
-/* 3×3 direction pad */
+/* 3x3 CSS Grid direction pad for push controls
+   Layout:  [  ] [Up] [  ]
+            [Lt] [  ] [Rt]
+            [  ] [Dn] [  ]
+   Corner cells are empty divs; center is a decorative .dir-center */
 .dir-pad {
   display: grid;
   grid-template-columns: repeat(3, 46px);
@@ -438,7 +509,14 @@ body {
   color: var(--text-muted);
 }
 
-/* ── Chat Panel ──────────────────────────────────────────── */
+/* ── Chat Panel ──────────────────────────────────────────────
+   RAG referee chat interface. Fixed height (320px) with
+   scrollable message area. Messages use a chat-bubble layout:
+   - User messages (.chat-msg-user): right-aligned, blue bg
+   - Referee messages (.chat-msg-referee): left-aligned, gray bg
+   Includes lightweight markdown rendering for referee responses
+   (.chat-md-*) and animated loading dots while waiting for LLM.
+   ──────────────────────────────────────────────────────────── */
 
 .chat-panel {
   background: var(--bg-panel);
@@ -571,7 +649,14 @@ body {
   40%           { opacity: 1;   }
 }
 
-/* ── Buttons ─────────────────────────────────────────────── */
+/* ── Buttons ─────────────────────────────────────────────────
+   Three-tier button system:
+   - .btn-primary: Solid fill action buttons (blue in light, purple in dark)
+   - .btn-secondary: Outlined with subtle fill, used for "skip moves"
+   - .btn-ghost: Transparent with border, used for header toggles
+   Size modifiers: .btn-small (13px), default (14px), .btn-large (16px)
+   All buttons use 150ms transitions and 45% opacity when disabled.
+   ──────────────────────────────────────────────────────────── */
 
 .btn {
   display: inline-flex;
@@ -620,7 +705,14 @@ body {
   line-height: 1;
 }
 
-/* ── Modal ───────────────────────────────────────────────── */
+/* ── Modal ───────────────────────────────────────────────────
+   Used for New Game dialog and Tutorial. Fullscreen overlay with
+   backdrop blur. The .modal container is centered with flex,
+   capped at 360px wide (480px for tutorial). Supports optional
+   close button and Escape key dismissal.
+   Radio groups use hidden native inputs with styled label wrappers
+   (.radio-option) — selected state highlighted with green accent.
+   ──────────────────────────────────────────────────────────── */
 
 .modal-overlay {
   position: fixed;
@@ -759,7 +851,15 @@ body {
   animation: fadeIn 0.2s ease;
 }
 
-/* ── Voice control ───────────────────────────────────────── */
+/* ── Voice control ───────────────────────────────────────────
+   Visual feedback for the Web Speech API voice control system.
+   The mic toggle button pulses green when actively listening.
+   Voice command results appear as a fixed toast below the header
+   with three status variants:
+   - --ok (green): command recognized and executed
+   - --err (red): command recognized but failed (e.g., piece not found)
+   - --no-match (gray): speech not recognized as a valid command
+   ──────────────────────────────────────────────────────────── */
 
 .voice-toggle--active {
   color: var(--accent-green) !important;
@@ -784,7 +884,14 @@ body {
 .voice-status--err      { background: #3d1010; border: 1px solid var(--accent-red);   color: #ffaaaa; }
 .voice-status--no-match { background: #1c1c24; border: 1px solid #444;               color: var(--text-muted); }
 
-/* ── Animations ──────────────────────────────────────────── */
+/* ── Animations ──────────────────────────────────────────────
+   Shared keyframe animations used throughout the application:
+   - micPulse: Gentle opacity pulse for active microphone button
+   - pulse: Used for AI thinking indicator and connection pip
+   - fadeIn: Slide-up entrance for toast notifications
+   - blink: Staggered dot animation for loading indicator
+   - aiPulse: SVG overlay pulse on board cells during AI turn
+   ──────────────────────────────────────────────────────────── */
 
 @keyframes micPulse {
   0%, 100% { opacity: 1; }
@@ -801,7 +908,12 @@ body {
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* ── Responsive ──────────────────────────────────────────── */
+/* ── Responsive ──────────────────────────────────────────────
+   Single breakpoint at 1100px. Above: horizontal board + sidebar.
+   Below: vertical stack (board on top, controls below).
+   The board-panel takes full width; side-panel caps at 680px
+   to prevent controls from stretching too wide on tablets.
+   ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 1100px) {
   .game-layout {
@@ -815,7 +927,12 @@ body {
   .board-panel { width: 100%; }
 }
 
-/* ── Connection status pip ───────────────────────────────── */
+/* ── Connection status pip ────────────────────────────────────
+   Small 8px circle next to the app title indicating WebSocket state:
+   - idle (gray): No active session
+   - connected (green + glow): WebSocket is open and healthy
+   - disconnected (orange + pulse): Lost connection, auto-reconnecting
+   ──────────────────────────────────────────────────────────── */
 
 .connection-pip {
   display: inline-block;
@@ -868,7 +985,13 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
-/* ── Piece Labels ────────────────────────────────────────── */
+/* ── Piece Labels ────────────────────────────────────────────
+   SVG text labels shown on game pieces on the board.
+   Each piece displays its full name (sleeve, lapel, belt, neck, joint).
+   Colors are inverted from the piece fill for readability:
+   - White pieces: dark text at 75% opacity
+   - Black pieces: light text at 90% opacity
+   ──────────────────────────────────────────────────────────── */
 
 .piece-label {
   font-size: 10px;
@@ -899,4 +1022,96 @@ body {
   width: 18px;
   height: 18px;
   opacity: 0.5;
+}
+
+/* ── Tutorial Modal ───────────────────────────────────────────
+   Multi-slide "How to Play" walkthrough. Wider than standard modal
+   (480px) to accommodate SVG board diagrams. Slides include:
+   welcome, board layout, piece types, setup, move, push, anchor,
+   winning, and strategy tips. Navigation via back/next buttons
+   or left/right arrow keys. Progress shown as "N / Total".
+   ──────────────────────────────────────────────────────────── */
+
+.tutorial-modal {
+  width: 480px;
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+}
+
+.tutorial-body {
+  overflow-y: auto;
+  min-height: 200px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.tutorial-body p { margin: 0 0 10px; }
+
+.tutorial-body ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tutorial-body li { line-height: 1.5; }
+
+.tutorial-body strong { color: var(--accent-gold); }
+
+.tutorial-body svg { display: block; margin: 12px auto; }
+
+.tutorial-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tutorial-progress {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tutorial-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.tutorial-pieces-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.tutorial-piece-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.tutorial-piece-label {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tutorial-piece-label--push { color: var(--accent-green); }
+.tutorial-piece-label--no-push { color: var(--text-muted); }
+
+.tutorial-tip {
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 8px;
 }
