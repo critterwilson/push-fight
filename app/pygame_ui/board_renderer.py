@@ -1,20 +1,36 @@
-"""Board rendering for PyGame interface."""
+"""
+Board renderer for the PyGame desktop interface.
+
+Draws the 10-row × 4-column Push Fight board as a grid of coloured cells
+with piece shapes (squares and circles), kill-zone shading, valid-move
+highlights, and anchor indicators.
+
+Coordinate mapping:
+  - Game row 0..9 → screen Y (top to bottom)
+  - Game col 0..3 → screen X (left to right)
+"""
 
 import pygame
 from app.engine.game_state import GameState
 
 
 class BoardRenderer:
-    """Handles rendering of the game board."""
-    
+    """
+    Stateless renderer that converts game-board state into PyGame draw calls.
+
+    The renderer owns the pixel-space layout (board origin + cell size) and
+    provides coordinate conversion helpers so other modules (InputHandler)
+    can translate mouse clicks back to board positions.
+    """
+
     def __init__(self, board_x, board_y, cell_size=50):
         """
-        Initialize board renderer.
-        
+        Initialise the board renderer.
+
         Args:
-            board_x: X position of board top-left corner
-            board_y: Y position of board top-left corner
-            cell_size: Size of each cell in pixels
+            board_x: Pixel X of the board's top-left corner on screen.
+            board_y: Pixel Y of the board's top-left corner on screen.
+            cell_size: Width and height of each grid cell in pixels.
         """
         self.board_x = board_x
         self.board_y = board_y
@@ -32,13 +48,13 @@ class BoardRenderer:
         }
     
     def board_to_screen(self, row, col):
-        """Convert board coordinates to screen coordinates."""
+        """Convert board (row, col) to screen pixel (x, y) of the cell's top-left."""
         x = self.board_x + col * self.cell_size
         y = self.board_y + row * self.cell_size
         return x, y
     
     def screen_to_board(self, screen_x, screen_y):
-        """Convert screen coordinates to board coordinates."""
+        """Convert screen pixel (x, y) to board (row, col), or None if out of bounds."""
         col = (screen_x - self.board_x) // self.cell_size
         row = (screen_y - self.board_y) // self.cell_size
         if 0 <= row < 10 and 0 <= col < 4:
@@ -92,7 +108,7 @@ class BoardRenderer:
                 pygame.draw.rect(surface, cell_color, rect)
                 pygame.draw.rect(surface, (35, 39, 46), rect, 1)
         
-        # Draw pieces
+        # ── Draw pieces on top of the grid ──────────────────────────────────
         for row in range(10):
             for col in range(4):
                 piece = game_state.board.get_piece(row, col)
@@ -100,41 +116,39 @@ class BoardRenderer:
                     x, y = self.board_to_screen(row, col)
                     center_x = x + self.cell_size // 2
                     center_y = y + self.cell_size // 2
-                    
-                    # Determine piece color
+
+                    # Team-based colour: white pieces are light, black are dark
                     if piece.team == 'white':
                         piece_color = (220, 220, 225)
                         outline_color = (180, 180, 190)
                     else:
                         piece_color = (40, 44, 52)
                         outline_color = (20, 20, 25)
-                    
-                    # Check if anchored
+
+                    # Anchor override: red outline marks the last-pushed piece
                     is_anchor = (row, col) == game_state.board.anchor_pos
                     if is_anchor:
-                        outline_color = (255, 0, 0)  # Red for anchor
-                    
-                    # Draw piece shape
+                        outline_color = (255, 0, 0)
+
+                    # Shape rendering — squares are pushers, circles are non-pushers
                     radius = int(self.cell_size * 0.35)
                     if piece.shape == 'square':
-                        # Draw square
                         square_rect = pygame.Rect(
                             center_x - radius, center_y - radius,
                             radius * 2, radius * 2
                         )
                         pygame.draw.rect(surface, piece_color, square_rect)
                         pygame.draw.rect(surface, outline_color, square_rect, 2)
-                        # Inner detail
+                        # Inner bevel detail for visual depth
                         inner_rect = square_rect.inflate(-10, -10)
                         pygame.draw.rect(surface, outline_color, inner_rect, 1)
                     else:
-                        # Draw circle
                         pygame.draw.circle(surface, piece_color, (center_x, center_y), radius)
                         pygame.draw.circle(surface, outline_color, (center_x, center_y), radius, 2)
-                        # Inner detail
+                        # Inner ring detail for visual depth
                         pygame.draw.circle(surface, outline_color, (center_x, center_y), radius - 5, 1)
-                    
-                    # Draw anchor indicator
+
+                    # Small red square at centre marks the anchor piece
                     if is_anchor:
                         anchor_size = 8
                         anchor_rect = pygame.Rect(

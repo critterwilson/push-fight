@@ -1,11 +1,26 @@
-"""Input handling for PyGame interface."""
+"""
+Mouse and keyboard input handler for the PyGame desktop interface.
+
+Translates raw PyGame events into game-level actions (move, push, setup
+click) using a two-click selection model:
+
+  - **Move phase**: Click own piece to select → click destination to move.
+  - **Push phase**: Click own square piece to select → press direction key
+    or click direction button to push.
+  - **Setup phase**: Click a cell to place/remove a piece.
+
+The handler delegates coordinate conversion to the :class:`BoardRenderer`.
+"""
 
 import pygame
 from app.engine.game_state import GameState
 
 
 class InputHandler:
-    """Handles mouse and keyboard input."""
+    """
+    Stateful input processor that tracks the currently selected piece
+    and valid move destinations.
+    """
     
     def __init__(self, board_renderer):
         """

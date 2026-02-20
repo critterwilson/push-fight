@@ -1,10 +1,24 @@
-"""UI components for PyGame interface."""
+"""
+Reusable PyGame UI widget library.
+
+Contains lightweight, self-contained components used throughout the
+PyGame desktop interface:
+
+  - :class:`Button` — rounded-rect button with hover highlight and shadow.
+  - :class:`StatusPanel` — information panel showing turn, phase, and moves.
+"""
 
 import pygame
 
 
 class Button:
-    """Simple button class for UI."""
+    """
+    Rounded-rectangle button with hover highlight and drop shadow.
+
+    Handles its own hover/click state via :meth:`handle_event` and renders
+    itself via :meth:`draw`.  The caller checks the return value of
+    ``handle_event`` to detect clicks.
+    """
     
     def __init__(self, x, y, width, height, text, color=(100, 100, 100), 
                  text_color=(255, 255, 255), font_size=20):
@@ -61,7 +75,12 @@ class Button:
 
 
 class StatusPanel:
-    """Panel showing game status information."""
+    """
+    Read-only information panel displaying turn, move count, and phase.
+
+    Rendered as a dark rectangle with text lines; changes colour and
+    wording based on game state (game over, AI turn, move/push phase).
+    """
     
     def __init__(self, x, y, width, height):
         self.rect = pygame.Rect(x, y, width, height)

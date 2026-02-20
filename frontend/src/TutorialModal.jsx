@@ -151,7 +151,6 @@ function WelcomeSlide() {
 /** Slide 2: Board layout with kill zones and center line. */
 function BoardSlide() {
   const w = 4 * S + PAD * 2
-  const h = 10 * S + PAD * 2
   return (
     <>
       <p>

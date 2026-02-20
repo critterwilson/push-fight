@@ -1,4 +1,20 @@
-"""Main PyGame application entry point."""
+"""
+PyGame desktop application entry point for Push Fight.
+
+Wires together the board renderer, input handler, game view (controller),
+UI buttons, status panel, and the RAG referee chat overlay into a single
+60 FPS game loop.
+
+Layout (900 × 700 window):
+  - Left side: 10×4 board rendered at (100, 50) with 60 px cells.
+  - Right side (x ≥ 500): status panel, action buttons, direction pad,
+    save/load dialogs.
+  - Centre overlay: chat panel for the AI referee (toggled via button).
+
+Run directly::
+
+    python -m app.pygame_ui.main
+"""
 
 import pygame
 import sys
@@ -11,21 +27,28 @@ from app.pygame_ui.chat_overlay import ChatOverlay
 from app.rag.ai_interface import AIInterface
 
 
-# Constants
+# ── Window / layout constants ────────────────────────────────────────────
 WINDOW_WIDTH = 900
 WINDOW_HEIGHT = 700
-BOARD_X = 100
-BOARD_Y = 50
-CELL_SIZE = 60
+BOARD_X = 100        # Board top-left X
+BOARD_Y = 50         # Board top-left Y
+CELL_SIZE = 60       # Pixels per cell
 FPS = 60
 
-# Colors
+# ── Colour palette ───────────────────────────────────────────────────────
 BACKGROUND = (20, 24, 30)
 TEXT_COLOR = (255, 255, 255)
 
 
 def main():
-    """Main PyGame application loop."""
+    """
+    Initialise PyGame, build UI components, and run the main event/render loop.
+
+    The loop follows a standard structure:
+      1. **Event handling** — mouse clicks, keyboard, chat overlay events.
+      2. **State updates** — game-over checks, AI turn scheduling, chat queue.
+      3. **Rendering** — board, buttons, status, dialogs, chat overlay.
+    """
     pygame.init()
     
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -68,29 +91,37 @@ def main():
     chat_overlay = ChatOverlay(WINDOW_WIDTH, WINDOW_HEIGHT)
     ask_referee_btn = Button(500, 580, 150, 40, "Ask Referee", (100, 80, 140))
 
+    # ── Game loop state ──────────────────────────────────────────────────
     running = True
     show_dialog = False
     dialog_mode = None  # 'save', 'load', or 'ai_model'
     dialog_filename = ""
     model_buttons = []
-    
+
+    # ── AI turn timing ───────────────────────────────────────────────────
     ai_move_timer = 0
     AI_MOVE_DELAY = 600  # ms between AI actions
     
+    # ==========================================================================
+    # Main Game Loop
+    # ==========================================================================
     while running:
-        # Handle events
+        # ----------------------------------------------------------------------
+        # 1. Event Handling
+        # ----------------------------------------------------------------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            # Chat overlay consumes all events when visible
+            # Chat overlay is modal: it consumes all events when visible
             elif chat_overlay.visible:
                 chat_overlay.handle_event(event)
                 continue
 
+            # --- Mouse clicks ---
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
-                    # Handle dialog interactions first
+                    # Dialogs are modal: they consume clicks before main UI
                     if show_dialog and dialog_mode == 'ai_model_select':
                         for path, btn in model_buttons:
                             if btn.handle_event(event):
@@ -99,7 +130,7 @@ def main():
                                 dialog_mode = None
                                 break
                     
-                    # Check main buttons
+                    # --- Main UI buttons ---
                     elif not show_dialog and new_game_btn.handle_event(event):
                         game_view.new_game()
                         input_handler.clear_selection()
@@ -107,7 +138,7 @@ def main():
                         game_view.set_game_mode('pvp')
                         input_handler.clear_selection()
                     elif not show_dialog and pvcpu_btn.handle_event(event):
-                        # Check for models directory
+                        # When PvCPU is selected, show a model selection dialog
                         models_dir = "models"
                         if not os.path.exists(models_dir):
                             try:
@@ -115,7 +146,6 @@ def main():
                             except OSError:
                                 pass
                         
-                        # Find .zip files
                         models = []
                         if os.path.exists(models_dir):
                             models = [f for f in os.listdir(models_dir) if f.endswith(".zip")]
@@ -130,8 +160,7 @@ def main():
                             start_y = 250
                             
                             for i, model in enumerate(models):
-                                # Clean name
-                                name = model.replace("push_fight_", "").replace(".zip", "")
+                                name = model.replace(".zip", "")
                                 if not name: name = model
                                 
                                 btn_width = 200
@@ -144,7 +173,7 @@ def main():
                             # Fallback to text input if no models found
                             show_dialog = True
                             dialog_mode = 'ai_model'
-                            dialog_filename = "models/push_fight_ppo"
+                            dialog_filename = "models/easy"
                     elif not show_dialog and save_btn.handle_event(event):
                         show_dialog = True
                         dialog_mode = 'save'
@@ -153,56 +182,48 @@ def main():
                         show_dialog = True
                         dialog_mode = 'load'
                         dialog_filename = ""
-                    # Check Ask Referee button
                     elif not show_dialog and ask_referee_btn.handle_event(event):
                         chat_overlay.show()
-                    # Check skip moves button
                     elif not show_dialog and skip_moves_btn.handle_event(event):
+                        # Allow player to skip remaining moves and go to push phase
                         if game_view.game.can_move():
                             game_view.set_message("Moves skipped - proceeding to push phase")
-                            # Skip remaining moves by setting moves_made to 2
                             game_view.game.moves_made = 2
-                    # Check direction buttons (only during push phase with selected piece)
+                    
+                    # --- Push direction buttons ---
                     elif not show_dialog and input_handler.get_selected_pos() and not game_view.game.can_move():
                         selected_pos = input_handler.get_selected_pos()
                         piece = game_view.game.board.get_piece(*selected_pos)
                         if piece and piece.shape == 'square':
                             direction = None
-                            if up_btn.handle_event(event):
-                                direction = (-1, 0)
-                            elif down_btn.handle_event(event):
-                                direction = (1, 0)
-                            elif left_btn.handle_event(event):
-                                direction = (0, -1)
-                            elif right_btn.handle_event(event):
-                                direction = (0, 1)
+                            if up_btn.handle_event(event): direction = (-1, 0)
+                            elif down_btn.handle_event(event): direction = (1, 0)
+                            elif left_btn.handle_event(event): direction = (0, -1)
+                            elif right_btn.handle_event(event): direction = (0, 1)
                             
                             if direction:
-                                # Only perform push when direction is selected
                                 if game_view.push_piece(selected_pos, direction):
                                     input_handler.clear_selection()
+                    
+                    # --- Board clicks for piece selection/movement ---
                     else:
-                        # Only handle board clicks if it's not AI's turn
                         if not show_dialog and not game_view.is_ai_turn():
-                            # Handle board click (for selecting/changing piece selection)
                             action = input_handler.handle_click(event.pos, game_view.game)
                             if action:
                                 if action['type'] == 'move':
                                     game_view.move_piece(action['from'], action['to'])
                                     input_handler.clear_selection()
-                                # Note: push action from keyboard is handled separately
-                                # Board clicks during push phase just change selection
             
+            # --- Keyboard input ---
             elif event.type == pygame.KEYDOWN:
-                # Only handle keyboard input if it's not AI's turn
+                # Game input (e.g. keyboard-based push)
                 if not show_dialog and not game_view.is_ai_turn():
-                    # Handle keyboard input
                     action = input_handler.handle_key(event.key, game_view.game)
                     if action and action['type'] == 'push':
                         game_view.push_piece(action['piece'], action['direction'])
                         input_handler.clear_selection()
                 
-                # Handle save/load/ai_model dialog
+                # Dialog text input
                 if show_dialog:
                     if dialog_mode == 'ai_model_select':
                         if event.key == pygame.K_ESCAPE:
@@ -218,24 +239,20 @@ def main():
                             elif dialog_mode == 'ai_model':
                                 game_view.set_game_mode('pvcpu', dialog_filename)
                             show_dialog = False
-                            dialog_mode = None
-                            dialog_filename = ""
                     elif event.key == pygame.K_ESCAPE:
                         show_dialog = False
-                        dialog_mode = None
-                        dialog_filename = ""
                     elif event.key == pygame.K_BACKSPACE:
                         dialog_filename = dialog_filename[:-1]
                     else:
-                        # Add character (simple, no special handling)
                         if event.unicode.isprintable():
                             dialog_filename += event.unicode
             
-            # Update button hover states
+            # --- Mouse hover (for button pseudo-classes) ---
             if show_dialog and dialog_mode == 'ai_model_select':
                 for _, btn in model_buttons:
                     btn.handle_event(event)
             else:
+                # Main UI buttons
                 new_game_btn.handle_event(event)
                 pvp_btn.handle_event(event)
                 pvcpu_btn.handle_event(event)
@@ -244,7 +261,7 @@ def main():
                 skip_moves_btn.handle_event(event)
                 ask_referee_btn.handle_event(event)
             
-            # Update direction buttons hover states
+            # Direction buttons
             if not show_dialog and input_handler.get_selected_pos() and not game_view.game.can_move():
                 selected_pos = input_handler.get_selected_pos()
                 piece = game_view.game.board.get_piece(*selected_pos)
@@ -254,15 +271,17 @@ def main():
                     left_btn.handle_event(event)
                     right_btn.handle_event(event)
         
-        # Update game state
+        # ----------------------------------------------------------------------
+        # 2. State Updates
+        # ----------------------------------------------------------------------
         game_view.update()
 
-        # Update chat overlay (drain answer queue, animations)
+        # Update chat overlay (drains answer queue from RAG, handles animations)
         chat_overlay.referee_ready = ai_interface.is_ready
         chat_overlay.referee_error = ai_interface.loading_error
         chat_overlay.update()
 
-        # Submit pending question to RAG
+        # Dispatch a pending question to the RAG referee (non-blocking)
         if chat_overlay.pending_question:
             question = chat_overlay.pending_question
             chat_overlay.pending_question = None
@@ -270,7 +289,8 @@ def main():
                 game_view.game, question, chat_overlay.receive_answer
             )
         
-        # Handle AI turn (non-blocking)
+        # --- AI turn logic ---
+        # A timer adds a small delay between AI moves to make them human-readable
         current_time = pygame.time.get_ticks()
         if game_view.is_ai_turn() and not show_dialog:
             if ai_move_timer == 0:
@@ -282,10 +302,12 @@ def main():
         else:
             ai_move_timer = 0
         
-        # Draw everything
+        # ----------------------------------------------------------------------
+        # 3. Rendering
+        # ----------------------------------------------------------------------
         screen.fill(BACKGROUND)
         
-        # Draw board
+        # Board with pieces, highlights, and anchor
         selected_pos = input_handler.get_selected_pos()
         valid_moves = input_handler.get_valid_moves()
         board_renderer.draw_board(
@@ -294,13 +316,12 @@ def main():
             valid_moves=valid_moves
         )
         
-        # Draw status panel
+        # Right-hand panel with status and controls
         status_panel.draw(screen, game_view.game, game_view)
         
-        # Draw buttons
+        # --- Main buttons ---
         new_game_btn.draw(screen)
         
-        # Draw mode buttons with highlighting
         pvp_color = (100, 149, 237) if game_view.game_mode == 'pvp' else (70, 130, 180)
         pvcpu_color = (255, 99, 71) if game_view.game_mode == 'pvcpu' else (205, 92, 92)
         pvp_btn.color = pvp_color
@@ -308,40 +329,38 @@ def main():
         pvp_btn.draw(screen)
         pvcpu_btn.draw(screen)
         
-        # Draw mode label (Removed to declutter)
-        
         save_btn.draw(screen)
         load_btn.draw(screen)
         ask_referee_btn.draw(screen)
         
-        # Draw skip moves button (only during move phase)
+        # --- Phase-dependent controls ---
+        # Skip moves button (only during move phase)
         if game_view.game.can_move() and not game_view.game.game_over:
             skip_moves_btn.draw(screen)
         
-        # Draw direction buttons (only during push phase with selected square piece)
+        # Direction buttons for push phase
         selected_pos = input_handler.get_selected_pos()
         if selected_pos and not game_view.game.can_move() and not game_view.game.game_over:
             piece = game_view.game.board.get_piece(*selected_pos)
             if piece and piece.shape == 'square' and piece.team == game_view.game.current_player:
-                # Draw label
                 label_text = small_font.render("Push Direction:", True, TEXT_COLOR)
                 screen.blit(label_text, (direction_btn_x, direction_btn_y - 25))
                 
-                # Draw direction buttons
                 up_btn.draw(screen)
                 down_btn.draw(screen)
                 left_btn.draw(screen)
                 right_btn.draw(screen)
         
-        # Draw message
+        # --- Overlays and status messages ---
+        # Yellow status message at bottom-left
         message = game_view.get_message()
         if message:
             text_surface = small_font.render(message, True, (255, 255, 0))
             screen.blit(text_surface, (50, WINDOW_HEIGHT - 40))
         
-        # Draw save/load dialog
+        # Modal dialogs for save/load/AI selection
         if show_dialog:
-            # Semi-transparent overlay
+            # Semi-transparent backdrop
             overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
             overlay.set_alpha(200)
             overlay.fill((0, 0, 0))
@@ -364,35 +383,29 @@ def main():
                 for _, btn in model_buttons:
                     btn.draw(screen)
             else:
-                # Dialog box
+                # Text input dialog for save/load
                 dialog_rect = pygame.Rect(250, 250, 400, 150)
                 pygame.draw.rect(screen, (50, 50, 50), dialog_rect)
                 pygame.draw.rect(screen, (255, 255, 255), dialog_rect, 2)
                 
-                # Text
-                if dialog_mode == 'save':
-                    mode_text = "Save"
-                    prompt_text = small_font.render(f"{mode_text} game - Enter filename:", True, TEXT_COLOR)
-                elif dialog_mode == 'load':
-                    mode_text = "Load"
-                    prompt_text = small_font.render(f"{mode_text} game - Enter filename:", True, TEXT_COLOR)
-                else:  # ai_model
-                    mode_text = "AI Model"
-                    prompt_text = small_font.render(f"Enter AI model path:", True, TEXT_COLOR)
+                prompt_text = small_font.render(f"Enter filename for {dialog_mode}:", True, TEXT_COLOR)
                 screen.blit(prompt_text, (dialog_rect.x + 20, dialog_rect.y + 20))
                 
                 filename_text = small_font.render(dialog_filename + "_", True, TEXT_COLOR)
                 screen.blit(filename_text, (dialog_rect.x + 20, dialog_rect.y + 60))
                 
-                hint_text = small_font.render("Press Enter to confirm, Esc to cancel", True, (150, 150, 150))
+                hint_text = small_font.render("Enter to confirm, Esc to cancel", True, (150, 150, 150))
                 screen.blit(hint_text, (dialog_rect.x + 20, dialog_rect.y + 100))
         
-        # Draw chat overlay (on top of everything)
+        # Chat overlay is always rendered last so it's on top
         chat_overlay.draw(screen)
 
         pygame.display.flip()
         clock.tick(FPS)
     
+    # ==========================================================================
+    # Shutdown
+    # ==========================================================================
     pygame.quit()
     sys.exit(0)
 

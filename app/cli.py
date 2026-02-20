@@ -1,13 +1,30 @@
-"""Enhanced CLI interface for Push Fight game."""
+"""
+Terminal-based CLI interface for Push Fight.
+
+Renders the 10×4 board with ANSI colours, provides interactive coordinate
+input for moves and pushes, and supports save/load via the storage module.
+
+Colour scheme:
+  - White pieces → bright white  |  Black pieces → yellow/brown
+  - Anchor → bright red bold     |  Kill zones → red background
+  - Valid moves → green dots     |  Highlights → cyan dots
+
+Run directly::
+
+    python -m app.cli
+"""
 
 import sys
 from app.engine.game_state import GameState
 from app.storage import save_game, load_game, list_saves
 
 
-# ANSI color codes for terminal output
+# ---------------------------------------------------------------------------
+# ANSI colour constants
+# ---------------------------------------------------------------------------
+
 class Colors:
-    """ANSI color codes for terminal output."""
+    """ANSI escape-code palette for coloured terminal output."""
     RESET = '\033[0m'
     BOLD = '\033[1m'
     
@@ -51,8 +68,19 @@ def colorize(text, color_code):
     return text
 
 
+# ---------------------------------------------------------------------------
+# Board rendering
+# ---------------------------------------------------------------------------
+
 def print_board(game, highlight_positions=None, valid_moves=None):
-    """Print the game board with enhanced visualization (optimized)."""
+    """
+    Render the 10×4 board to the terminal with ANSI colours.
+
+    Args:
+        game: The current GameState.
+        highlight_positions: Optional set of (y, x) cells to highlight in cyan.
+        valid_moves: Optional set of (y, x) cells to highlight in green.
+    """
     highlight_positions = highlight_positions or set()
     valid_moves = valid_moves or set()
     
@@ -122,8 +150,20 @@ def print_status(game):
     print("=" * 50)
 
 
+# ---------------------------------------------------------------------------
+# Input parsing helpers
+# ---------------------------------------------------------------------------
+
 def parse_coords(input_str):
-    """Parse coordinate input in various formats: 'y,x', 'y x', or separate prompts."""
+    """
+    Parse coordinate input in various formats.
+
+    Accepted formats: ``"y,x"``, ``"y x"``, or a single row number (returns
+    ``(row, None)`` so the caller can prompt for the column separately).
+
+    Returns:
+        Tuple of (row, col) or (row, None) on partial input, or None on error.
+    """
     input_str = input_str.strip()
     
     # Try comma-separated
@@ -152,7 +192,12 @@ def parse_coords(input_str):
 
 
 def get_direction(prompt="Direction (w/s/a/d): "):
-    """Get direction input from user (simplified prompt)."""
+    """
+    Prompt the user for a push direction (WASD or arrow words).
+
+    Returns:
+        Tuple (dy, dx) representing the direction, or None on invalid input.
+    """
     direction_input = input(prompt).strip().lower()
     
     direction_map = {
@@ -173,8 +218,17 @@ def get_direction(prompt="Direction (w/s/a/d): "):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Turn actions
+# ---------------------------------------------------------------------------
+
 def move_piece(game):
-    """Handle moving a piece with quick coordinate input."""
+    """
+    Interactive move flow: prompt for source piece and destination.
+
+    Validates ownership, computes valid destinations via BFS, and executes
+    the board-level move.  Returns True on success, False on cancel/error.
+    """
     print(colorize("Move: Enter 'y,x' for piece, then destination (or 'q' to cancel)", Colors.BOLD))
     
     # Get source coordinates (allow combined input)
@@ -244,7 +298,12 @@ def move_piece(game):
 
 
 def push_piece(game):
-    """Handle push phase with quick input."""
+    """
+    Interactive push flow: prompt for a square piece and push direction.
+
+    Loops until a valid push is executed.  After a successful push the
+    board is re-printed, game-over is checked, and the turn is switched.
+    """
     print(colorize("Push: Enter square piece (y,x) and direction (w/s/a/d)", Colors.BOLD))
     push_successful = False
     
@@ -292,8 +351,12 @@ def push_piece(game):
             print(colorize("Invalid push! Try again.", Colors.RED))
 
 
+# ---------------------------------------------------------------------------
+# Menu / commands
+# ---------------------------------------------------------------------------
+
 def show_menu():
-    """Show main menu options."""
+    """Print the available single-letter commands."""
     print("\n" + colorize("Commands:", Colors.BOLD))
     print("  q - Quit game")
     print("  s - Save game")
@@ -303,7 +366,12 @@ def show_menu():
 
 
 def handle_command(game, command):
-    """Handle menu commands."""
+    """
+    Dispatch a single-letter command (q/s/l/n/h).
+
+    Returns:
+        True to continue the game loop, False to quit.
+    """
     command = command.strip().lower()
     
     if command == 'q':
@@ -364,10 +432,21 @@ def handle_command(game, command):
         return True
 
 
+# ---------------------------------------------------------------------------
+# Main game loop
+# ---------------------------------------------------------------------------
+
 def play_game():
-    """Main game loop with enhanced CLI."""
+    """
+    Top-level game loop: setup → (move phase → push phase) → game over.
+
+    Each iteration prints the board and status, then runs the optional
+    move phase (up to 2 moves) followed by the mandatory push phase.
+    Supports mid-game save/load and recursive replay.
+    """
     game = GameState.create_initial_game()
     
+    # ── Welcome message ──
     print("\n" + colorize("=" * 50, Colors.BOLD))
     print(colorize("WELCOME TO PUSH FIGHT!", Colors.BOLD + Colors.CYAN))
     print(colorize("=" * 50, Colors.BOLD))
@@ -378,67 +457,72 @@ def play_game():
     print("\nCommands: q=quit, s=save, l=load, n=new game, h=help")
     print(colorize("=" * 50, Colors.BOLD))
     
+    # ========================================================================
+    # Main Game Loop
+    # ========================================================================
     while not game.game_over:
         print_board(game)
         print_status(game)
         
-        # Check for game over conditions (0 Square pieces)
+        # --- Pre-turn checks ---
+        # Check for win/loss conditions that may have been met by opponent's last turn
         game.check_game_over()
         if game.game_over:
             break
         
-        # Check if player is trapped (no legal pushes)
+        # Check if the current player is trapped (has no legal pushes available).
+        # If so, they forfeit their turn and lose the game.
         if not game.has_legal_push():
             print(colorize(f"{game.current_player.upper()} has no legal pushes! Game Over.", Colors.RED))
             game.game_over = True
             game.winner = 'black' if game.current_player == 'white' else 'white'
             break
         
-        # Move Phase: Up to 2 moves (optional - can skip)
+        # --------------------------------------------------------------------
+        # Move Phase (Optional)
+        # --------------------------------------------------------------------
+        # Player can make up to 2 moves. They can skip moves by pressing Enter
+        # or by entering 'n'.
         while game.can_move():
-            # Default to skip if just pressing Enter - moves are optional
             action = input(f"\nMove? (Enter=skip, y=move, q/s/l/h=commands): ").strip().lower()
             
-            # Quick command check
-            if action in ['q', 's', 'l', 'h']:
+            # Handle meta-game commands (quit, save, load, help)
+            if action in ['q', 's', 'l', 'h', 'n']:
                 if not handle_command(game, action):
-                    return  # Quit
+                    return  # Quit game
+                # After handling command, re-evaluate loop condition
                 continue
             
-            # Empty input or 'n' means skip moves
-            if action == '' or action == 'n':
+            # Empty input means skip moves for this turn
+            if action == '' or action == 'skip':
                 print(colorize("Skipping moves - proceeding to push phase", Colors.YELLOW))
-                break  # Skip remaining moves
+                break  # Exit move phase
             
-            # Check if it's a coordinate input (quick move)
-            if ',' in action or ' ' in action:
-                # User entered coordinates directly - try to parse as move
-                coords = parse_coords(action)
-                if coords and coords[1] is not None:
-                    # They gave us both coordinates, treat as piece selection
-                    # This is a shortcut - we'll need destination too
-                    print(colorize("Quick move mode - enter destination (y,x):", Colors.CYAN))
-                    # For now, fall through to normal move
-                    action = 'y'
-            
+            # If user enters 'y', start the interactive move_piece() flow
             if action == 'y':
                 if move_piece(game):
                     game.moves_made += 1
-                    # Only print board if there are more moves available
+                    # Re-print board after a successful move if more are possible
                     if game.can_move():
                         print_board(game)
                 else:
-                    print(colorize("Move failed. Try again.", Colors.YELLOW))
+                    # move_piece() returns False on cancel/error
+                    print(colorize("Move cancelled or failed. Try again.", Colors.YELLOW))
             else:
-                print(colorize("Invalid input. Press Enter to skip, 'y' to move, or q/s/l/h for commands", Colors.RED))
+                print(colorize("Invalid input. Enter 'y' to move, or press Enter to skip.", Colors.RED))
         
         if game.game_over:
             break
         
-        # Mandatory Push Phase
+        # --------------------------------------------------------------------
+        # Push Phase (Mandatory)
+        # --------------------------------------------------------------------
+        # After the optional move phase, the player MUST make one push.
         push_piece(game)
     
+    # ========================================================================
     # Game Over
+    # ========================================================================
     print("\n" + colorize("=" * 50, Colors.BOLD))
     winner_color = Colors.GREEN if game.winner else Colors.YELLOW
     print(colorize(f"GAME OVER! WINNER: {game.winner.upper() if game.winner else 'DRAW'}", 
@@ -446,10 +530,10 @@ def play_game():
     print(colorize("=" * 50, Colors.BOLD))
     print_board(game)
     
-    # Ask if player wants to play again
+    # --- Play again prompt ---
     play_again = input("\nPlay again? (y/n): ").strip().lower()
     if play_again == 'y':
-        play_game()
+        play_game()  # Recursive call to restart the game loop
 
 
 if __name__ == "__main__":

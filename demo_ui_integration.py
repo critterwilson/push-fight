@@ -1,3 +1,27 @@
+"""
+Standalone demo script for the asynchronous AI Interface.
+
+This script demonstrates how the UI layer (PyGame or web) can interact
+with the RAG engine in a non-blocking way using the AIInterface singleton.
+
+The flow:
+  1. ``AIInterface`` is initialized. It starts loading the heavy RAG
+     engine on a background thread.
+  2. The main thread simulates a responsive UI loop, printing messages.
+  3. The user "asks" a question by calling ``ai.ask_question()``, providing
+     a callback function (``mock_ui_callback``). This call returns
+     immediately.
+  4. The main loop continues to run without blocking.
+  5. When the AI has an answer, the background thread invokes the
+     callback, which prints the answer to the console.
+
+This shows how the UI can remain fully interactive while the LLM is
+processing a question.
+
+Usage:
+    python demo_ui_integration.py
+"""
+
 import time
 import sys
 import os

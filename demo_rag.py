@@ -1,3 +1,24 @@
+"""
+Standalone demo script for the Push Fight RAG-powered AI Referee.
+
+This script demonstrates how to:
+  1. Initialize the game engine (:class:`GameState`).
+  2. Initialize the RAG pipeline (:class:`PushFightRAG`).
+  3. Format the current game state into a text summary for the LLM.
+  4. Ask a series of rule and strategy questions against the current
+     board state and print the AI's responses.
+
+This provides a quick, headless way to test the full RAG chain
+(Ollama + ChromaDB + LangChain) without running the web server or UI.
+
+Usage:
+    python demo_rag.py
+
+Prerequisites:
+    - Ollama server running with a model (e.g. ``llama3``) downloaded.
+    - ``assets/rules.md`` file must exist for the RAG knowledge base.
+"""
+
 import os
 import sys
 

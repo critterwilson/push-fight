@@ -1,3 +1,25 @@
+/**
+ * GameControls — Side-panel controls for game actions.
+ *
+ * Renders different control sets depending on the game phase:
+ *
+ *   **Setup mode**: Shows the SetupTray (piece palette) and a confirm
+ *   button.  The tray lists all 5 pieces with their shapes; placed
+ *   pieces are greyed out, and the selected piece is highlighted.
+ *
+ *   **Play mode**: Shows phase-specific controls:
+ *     - Move phase: "Skip moves → Push now" button.
+ *     - Push phase: Direction pad (arrow buttons) for selecting
+ *       push direction when a square piece is selected.
+ *     - Bottom controls: "New game" and "Save / Load" toggle.
+ *     - Save/Load panel: Save input field + list of saved games.
+ *
+ * The direction pad maps visual directions to game coordinates,
+ * accounting for the board's transposition:
+ *   Visual up/down    → dx changes (column axis)
+ *   Visual left/right → dy changes (row axis)
+ */
+
 import { useState, useEffect } from 'react'
 import * as api from './api'
 
@@ -12,25 +34,30 @@ export function GameControls({
   const [showSaveLoad, setShowSaveLoad] = useState(false)
   const [saveMsg, setSaveMsg]       = useState('')
 
+  // Derived state for rendering conditions
   const isPushPhase  = !gameState.canMove && gameState.canPush && !gameState.gameOver
   const isPlayerTurn = !gameState.isAiTurn && !gameState.gameOver
 
-  // Board is transposed: dy changes = left/right visually, dx changes = up/down
+  // Map valid push directions to visual button states.
+  // Board is transposed: dy changes = left/right, dx changes = up/down.
   const canUp    = validPushDirs.some(([, dx]) => dx === -1)
   const canDown  = validPushDirs.some(([, dx]) => dx ===  1)
   const canLeft  = validPushDirs.some(([dy])   => dy === -1)
   const canRight = validPushDirs.some(([dy])   => dy ===  1)
 
+  /** Fetch the list of saved games from the server. */
   const loadSaveList = async () => {
     const data = await api.listSaves()
     setSaves(data.saves)
   }
 
+  /** Toggle the save/load panel visibility, fetching saves on open. */
   const handleToggleSaveLoad = () => {
     if (!showSaveLoad) loadSaveList()
     setShowSaveLoad(v => !v)
   }
 
+  /** Save the current game with the given name and show confirmation. */
   const handleSave = async () => {
     const name = saveInput.trim() || 'game'
     await onSave(name)
@@ -39,10 +66,13 @@ export function GameControls({
     loadSaveList()
   }
 
+  /** Load a saved game by name and close the panel. */
   const handleLoad = async (name) => {
     await onLoad(name)
     setShowSaveLoad(false)
   }
+
+  // ── Setup mode UI ─────────────────────────────────────────────────────
 
   if (gameState.setupMode) {
     const team   = gameState.currentPlayer
@@ -71,10 +101,12 @@ export function GameControls({
     )
   }
 
+  // ── Play mode UI ──────────────────────────────────────────────────────
+
   return (
     <div className="game-controls">
 
-      {/* Skip to push */}
+      {/* Skip to push — shown during move phase on the player's turn */}
       {isPlayerTurn && gameState.canMove && (
         <button className="btn btn-secondary full-width" onClick={onSkipMoves}>
           Skip moves → Push now
@@ -103,7 +135,7 @@ export function GameControls({
         </div>
       )}
 
-      {/* Bottom controls */}
+      {/* Bottom controls — always visible during play */}
       <div className="bottom-controls">
         <button className="btn btn-primary" onClick={onNewGame}>New game</button>
         <button className="btn btn-ghost"   onClick={handleToggleSaveLoad}>
@@ -111,7 +143,7 @@ export function GameControls({
         </button>
       </div>
 
-      {/* Save/Load panel */}
+      {/* Save/Load collapsible panel */}
       {showSaveLoad && (
         <div className="save-load-panel">
           <div className="save-row">
@@ -147,12 +179,26 @@ export function GameControls({
 }
 
 // ---------------------------------------------------------------------------
-// SetupTray — piece pool shown during placement phase
+// SetupTray — piece palette shown during the placement phase
 // ---------------------------------------------------------------------------
 
+/** Maps piece names to their shapes (square = pusher, round = non-pusher). */
 const PIECE_SHAPE = { sleeve: 'square', lapel: 'square', belt: 'square', neck: 'round', joint: 'round' }
+
+/** All five piece names in display order. */
 const ALL_PIECES  = ['sleeve', 'lapel', 'belt', 'neck', 'joint']
 
+/**
+ * SetupTray — horizontal row of piece chips for setup placement.
+ *
+ * Each chip shows the piece's shape (square or circle SVG), its name,
+ * and its placement status (placed = greyed out, selected = highlighted).
+ *
+ * @param {string}   team          — Current team placing pieces.
+ * @param {string[]} unplaced      — Names of pieces not yet placed.
+ * @param {string}   selectedPiece — Currently selected piece name, or null.
+ * @param {function} onSelect      — Callback when a piece chip is clicked.
+ */
 function SetupTray({ team, unplaced, selectedPiece, onSelect }) {
   const isWhite = team === 'white'
   const label   = isWhite ? 'White — place your pieces' : 'Black — place your pieces'
@@ -174,6 +220,7 @@ function SetupTray({ team, unplaced, selectedPiece, onSelect }) {
               aria-pressed={selected}
               title={placed ? `${name} — placed` : `Select ${name}`}
             >
+              {/* Piece shape icon */}
               <svg width={20} height={20} aria-hidden="true">
                 {shape === 'square'
                   ? <rect x={2} y={2} width={16} height={16} rx={4}

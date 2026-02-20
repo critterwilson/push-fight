@@ -1,11 +1,28 @@
-"""Chat overlay for the RAG Referee in PyGame UI."""
+"""
+Chat overlay widget for the RAG Referee in the PyGame desktop UI.
+
+Renders a centred, semi-transparent panel with:
+  - A scrollable message feed (user questions + referee answers)
+  - A text input field for typing new questions
+  - A "thinking …" animation while the LLM is processing
+  - A close button (or Escape) to dismiss
+
+Thread safety: answers arrive asynchronously via :meth:`receive_answer`,
+which enqueues them into a ``queue.Queue``.  The main-thread :meth:`update`
+drains the queue each frame.
+"""
 
 import queue
 import pygame
 
 
 class ChatOverlay:
-    """Toggleable chat overlay for asking the RAG Referee questions."""
+    """
+    Modal chat panel rendered on top of the game board.
+
+    The overlay consumes all PyGame events while visible so the board
+    beneath it cannot be interacted with accidentally.
+    """
 
     # Colors
     BACKDROP_ALPHA = 180
@@ -25,21 +42,29 @@ class ChatOverlay:
     SEPARATOR_COLOR = (60, 65, 75)
 
     def __init__(self, screen_width, screen_height):
+        """
+        Create a chat overlay centred on the screen.
+
+        Args:
+            screen_width: Window width in pixels (for centering).
+            screen_height: Window height in pixels (for centering).
+        """
         self.width = 520
         self.height = 520
         self.x = (screen_width - self.width) // 2
         self.y = (screen_height - self.height) // 2
 
+        # Chat state
         self.visible = False
-        self.messages = []  # [{"role": "user"|"referee"|"system", "text": str}]
+        self.messages = []           # [{"role": "user"|"referee"|"system", "text": str}]
         self.input_text = ""
-        self.is_thinking = False
+        self.is_thinking = False     # True while waiting for LLM response
         self.scroll_offset = 0
-        self.pending_question = None
-        self.referee_ready = False
-        self.referee_error = None
+        self.pending_question = None # Set when user submits; cleared by main loop
+        self.referee_ready = False   # Mirrors AIInterface.is_ready
+        self.referee_error = None    # Mirrors AIInterface.loading_error
 
-        # Thread-safe queue for async answers
+        # Thread-safe queue for async answers from the RAG background thread
         self._answer_queue = queue.Queue()
 
         # Layout constants

@@ -1,4 +1,17 @@
-"""Game storage functions for saving and loading game states to/from JSON files."""
+"""
+File-based persistence layer for Push Fight game states.
+
+Provides CRUD operations on game save files stored as JSON in the
+``saves/`` directory (project root).  Each save file is a serialised
+:class:`~app.engine.game_state.GameState` produced by the engine's own
+``save_to_file`` / ``load_from_file`` methods.
+
+Public API:
+  - :func:`save_game`   — serialise a GameState to ``saves/<name>.json``
+  - :func:`load_game`   — deserialise a GameState from a save file
+  - :func:`list_saves`  — list available save-file names (without extension)
+  - :func:`delete_save` — remove a save file from disk
+"""
 
 import os
 import json

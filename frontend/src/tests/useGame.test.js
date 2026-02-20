@@ -176,6 +176,11 @@ describe('useGame — createGame', () => {
 })
 
 describe('useGame — WebSocket events', () => {
+  /** Tests for handling server-sent WebSocket events: state updates, AI
+   *  action notifications, RAG answers, and connection lifecycle (reconnect
+   *  on abnormal close, no reconnect on session-expired close). */
+
+  /** Helper: create a session and return the hook + mock WebSocket. */
   async function setupSession() {
     mockFetch(INITIAL_STATE)
     const hook = renderHook(() => useGame())
@@ -185,6 +190,8 @@ describe('useGame — WebSocket events', () => {
   }
 
   it('updates gameState on state_update event', async () => {
+    /** When the server sends a state_update event via WebSocket, the hook
+     *  must replace the current gameState with the new state. */
     const { hook, ws } = await setupSession()
     const newState = { ...INITIAL_STATE.state, currentPlayer: 'black' }
 
@@ -194,6 +201,9 @@ describe('useGame — WebSocket events', () => {
   })
 
   it('sets aiThinking on ai_action event and clears on ai_done', async () => {
+    /** The ai_action event signals that the AI is about to make a move.
+     *  The hook must set aiThinking=true and store the pendingAiAction for
+     *  the UI to animate. ai_done clears both flags. */
     const { hook, ws } = await setupSession()
 
     act(() => { ws.emit({ event: 'ai_action', action: { type: 'move', from: [5,0], to: [4,0] } }) })
@@ -206,6 +216,9 @@ describe('useGame — WebSocket events', () => {
   })
 
   it('appends rag_answer to messages and replaces loading placeholder', async () => {
+    /** When the user asks the referee, a loading placeholder is added to
+     *  messages. When the server responds with rag_answer, the placeholder
+     *  must be replaced with the actual answer text. */
     const { hook, ws } = await setupSession()
 
     // Simulate the loading placeholder that askReferee adds
@@ -227,6 +240,9 @@ describe('useGame — WebSocket events', () => {
   })
 
   it('attempts reconnect after unexpected close', async () => {
+    /** An abnormal WebSocket close (code 1006) should trigger an automatic
+     *  reconnection attempt after a 2-second delay. This ensures resilience
+     *  against transient network issues. */
     const { hook, ws } = await setupSession()
 
     act(() => { ws.onclose({ code: 1006 }) }) // abnormal close
@@ -240,6 +256,9 @@ describe('useGame — WebSocket events', () => {
   })
 
   it('does not reconnect on session-expired close (code 4004)', async () => {
+    /** Custom close code 4004 means the session no longer exists on the
+     *  server. Reconnecting would be futile, so the hook must NOT attempt
+     *  it. Instead, it should set an error for the UI to display. */
     const { hook, ws } = await setupSession()
     const instancesBefore = MockWebSocket.instances.length
 
@@ -255,7 +274,20 @@ describe('useGame — WebSocket events', () => {
 })
 
 describe('useGame — handleCellClick in move phase', () => {
+  /** Tests for the handleCellClick method during the move phase.
+   *  When a player clicks their own piece, the hook must fetch valid moves
+   *  from the server and store them for the Board component to highlight. */
+
   it('fetches valid moves when an own piece is clicked', async () => {
+    /** Scenario: white's turn, white piece at (4,0). Clicking (4,0) should
+     *  trigger a fetch to /api/game/{id}/valid-moves/4/0, then set
+     *  selectedPiece and validMoves from the response.
+     *
+     *  Setup:
+     *  1. Create game via mocked API.
+     *  2. Inject a white piece at (4,0) via a WebSocket state_update.
+     *  3. Mock the valid-moves API response.
+     *  4. Call handleCellClick(4, 0) and verify results. */
     mockFetch(INITIAL_STATE) // createGame
     const hook = renderHook(() => useGame())
 

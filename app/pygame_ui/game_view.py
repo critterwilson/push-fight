@@ -1,4 +1,14 @@
-"""Game view and state management for PyGame interface."""
+"""
+Game view / controller for the PyGame desktop interface.
+
+:class:`GameView` owns the authoritative :class:`GameState` and exposes
+high-level actions (move, push, place, save, load, new game) that the
+main loop can call in response to user input.  It also manages:
+
+  - AI opponent integration (loads a MaskablePPO agent from a .zip model)
+  - Status messages with a 3-second auto-dismiss timer
+  - Per-frame game-over detection (trapped-player check)
+"""
 
 import os
 from app.engine.game_state import GameState
@@ -7,10 +17,20 @@ from app.rl.agent import PushFightAgent
 
 
 class GameView:
-    """Manages game state and view logic."""
-    
+    """
+    Facade over GameState that adds UI-level concerns (messages, AI turns).
+
+    Attributes:
+        game (GameState): The live game state.
+        game_mode (str): ``'pvp'`` or ``'pvcpu'``.
+        ai_agent (PushFightAgent | None): RL agent for PvCPU mode.
+        ai_team (str): Which team the AI controls (default ``'black'``).
+        message (str): Current status/flash message.
+        message_timer (int): Frames remaining for the current message.
+    """
+
     def __init__(self):
-        """Initialize game view."""
+        """Create a new game view with a fresh initial game state."""
         self.game = GameState.create_initial_game()
         self.message = ""
         self.message_timer = 0
